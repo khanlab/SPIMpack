@@ -6,22 +6,28 @@ import unittest
 from pathlib import Path
 
 from spimpack.backends.imaris_symlink import LocalImarisSymlinkWriter
-from spimpack.models import DatasetManifest, DatasetSpec, ImageAsset
+from spimpack.models import BidsEntities, DatasetManifest, DatasetSpec, ImageAsset
 from spimpack.validation import validate_manifest
+
+_VALID_DD = {"Name": "Demo", "BIDSVersion": "1.9.0", "DatasetType": "raw", "License": "CC0"}
 
 
 class WriterTests(unittest.TestCase):
     def _manifest(self, source: Path) -> DatasetManifest:
         return DatasetManifest(
-            dataset_description={"Name": "Demo", "BIDSVersion": "1.10.0"},
+            dataset_description=_VALID_DD,
             datasets=[
                 DatasetSpec(
                     dataset_id="d1",
-                    bids_subdir="sub-01/ses-01/micr",
                     assets=[
                         ImageAsset(
                             source_ims=source,
-                            output_prefix="sub-01_ses-01",
+                            entities=BidsEntities(
+                                subject="01",
+                                sample="s01",
+                                session="01",
+                                acquisition="4x1",
+                            ),
                             orientation="LPS",
                             channel_labels=["nuclei", "membrane"],
                             metadata={"Magnification": "4x"},
@@ -45,15 +51,17 @@ class WriterTests(unittest.TestCase):
 
             dd = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
             self.assertEqual(dd["Name"], "Demo")
+            # GeneratedBy should be auto-injected
+            self.assertTrue(any(e.get("Name") == "SPIMpack" for e in dd["GeneratedBy"]))
 
-            base = out / "sub-01/ses-01/micr/sub-01_ses-01_SPIM"
-            link = base.with_suffix(".ims")
-            sidecar = json.loads(base.with_suffix(".json").read_text(encoding="utf-8"))
-
+            # BIDS path: sub-01/ses-01/micr/sub-01_ses-01_sample-s01_acq-4x1_SPIM.ims
+            link = out / "sub-01/ses-01/micr/sub-01_ses-01_sample-s01_acq-4x1_SPIM.ims"
+            sidecar = link.with_suffix(".json")
             self.assertTrue(link.is_symlink())
             self.assertTrue(link.resolve().is_file())
-            self.assertEqual(sidecar["orientation"], "LPS")
-            self.assertEqual(sidecar["channel_labels"], ["nuclei", "membrane"])
+            data = json.loads(sidecar.read_text(encoding="utf-8"))
+            self.assertEqual(data["orientation"], "LPS")
+            self.assertEqual(data["channel_labels"], ["nuclei", "membrane"])
 
     def test_writer_creates_relative_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -64,5 +72,36 @@ class WriterTests(unittest.TestCase):
             out = root / "out"
             LocalImarisSymlinkWriter(relative_symlinks=True).write(manifest, out)
 
-            link = out / "sub-01/ses-01/micr/sub-01_ses-01_SPIM.ims"
+            link = out / "sub-01/ses-01/micr/sub-01_ses-01_sample-s01_acq-4x1_SPIM.ims"
             self.assertFalse(str(link.readlink()).startswith("/"))
+
+    def test_generated_by_not_duplicated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "raw.ims"
+            source.write_text("ims", encoding="utf-8")
+
+            manifest = DatasetManifest(
+                dataset_description={
+                    **_VALID_DD,
+                    "GeneratedBy": [{"Name": "SPIMpack", "Version": "0.1.0"}],
+                },
+                datasets=[
+                    DatasetSpec(
+                        dataset_id="d1",
+                        assets=[
+                            ImageAsset(
+                                source_ims=source,
+                                entities=BidsEntities(subject="01", sample="s01"),
+                                orientation="LPS",
+                                channel_labels=["ch1"],
+                            )
+                        ],
+                    )
+                ],
+            )
+            out = root / "out"
+            LocalImarisSymlinkWriter().write(manifest, out)
+            dd = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
+            spimpack_entries = [e for e in dd["GeneratedBy"] if e.get("Name") == "SPIMpack"]
+            self.assertEqual(len(spimpack_entries), 1)

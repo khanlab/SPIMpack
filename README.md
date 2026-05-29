@@ -1,6 +1,6 @@
 # SPIMpack
 
-SPIMpack is a standalone Python package for packaging/publishing SPIM datasets from existing microscopy source files.
+SPIMpack is a standalone Python package for packaging/publishing SPIM datasets from existing microscopy source files into BIDS-structured output directories.
 
 ## Scope
 
@@ -13,9 +13,15 @@ SPIMpack is a standalone Python package for packaging/publishing SPIM datasets f
 
 `local-imaris-symlink` writes:
 
-- top-level `dataset_description.json`
+- top-level `dataset_description.json` with auto-injected SPIMpack `GeneratedBy` entry
 - sidecars named `*_SPIM.json`
 - symlinks named `*_SPIM.ims`
+
+BIDS path structure is built from entities using pybids:
+
+```
+sub-{subject}/[ses-{session}/]micr/sub-{subject}[_ses-{session}][_sample-{sample}][_acq-{acquisition}]_SPIM.ims
+```
 
 Sidecars preserve metadata that cannot be embedded in Imaris assets, including required SPIM fields:
 
@@ -25,28 +31,63 @@ Sidecars preserve metadata that cannot be embedded in Imaris assets, including r
 
 ## Input format
 
-Manifest input is YAML with optional TSV-driven asset rows:
+Manifest input is YAML with optional TSV-driven asset rows.
+
+### YAML manifest example
 
 ```yaml
 dataset_description:
-  Name: Example
-  BIDSVersion: 1.10.0
-  RequiredMicroscopyFields: [Species]
+  Name: My SPIM Dataset
+  BIDSVersion: 1.9.0
+  DatasetType: raw
+  License: CC-BY-4.0
+  Authors:
+    - Author Name 1
+    - Author Name 2
 datasets_tsv: datasets.tsv
 ```
 
-Required TSV columns:
+The writer automatically appends a `GeneratedBy` entry for SPIMpack if not already present.
 
-- `dataset_id`
-- `bids_subdir`
-- `source_ims`
-- `output_prefix`
-- `orientation`
-- `channel_labels`
+### TSV columns
 
-Output layout is BIDS-like and controlled by each row's `bids_subdir`.
+Required:
 
-Symlinks are absolute by default, with a `--relative-symlinks` option.
+| Column          | Description                              |
+|-----------------|------------------------------------------|
+| `dataset_id`    | Logical dataset grouping key             |
+| `sub`           | BIDS subject label (alphanumeric only)   |
+| `sample`        | BIDS sample label (alphanumeric only)    |
+| `source_ims`    | Absolute path to the source `.ims` file  |
+| `orientation`   | Image orientation (e.g. `LPS`)          |
+| `channel_labels`| Semicolon-separated channel names       |
+
+Optional (entity columns):
+
+| Column | Description                                          |
+|--------|------------------------------------------------------|
+| `ses`  | BIDS session label (alphanumeric only)               |
+| `acq`  | BIDS acquisition label, e.g. objective `4x1`        |
+
+Any additional columns are written into the sidecar JSON.
+
+### Example TSV
+
+```tsv
+dataset_id	sub	ses	sample	acq	source_ims	orientation	channel_labels	Species
+cohort1	01	01	s01	4x1	/data/raw/sub01.ims	LPS	nuclei;membrane	mouse
+```
+
+## Validation
+
+Before writing, SPIMpack validates:
+
+- Required `dataset_description` fields: `Name`, `BIDSVersion`, `DatasetType`, `License`
+- `DatasetType` must be `raw` or `derivative`
+- `Authors` must be a list if provided
+- BIDS entity values (`sub`, `ses`, `sample`, `acq`) must be **alphanumeric only** (letters and numbers, no hyphens or special characters)
+- Required sidecar fields: `orientation`, `channel_labels`
+- Source `.ims` files must exist
 
 ## CLI
 
@@ -54,8 +95,11 @@ Symlinks are absolute by default, with a `--relative-symlinks` option.
 spimpack package \
   --manifest /path/to/manifest.yml \
   --output-dir /path/to/output \
-  --backend local-imaris-symlink
+  --backend local-imaris-symlink \
+  [--relative-symlinks]
 ```
+
+Symlinks are absolute by default. Use `--relative-symlinks` to create relative symlinks.
 
 ## Future backend model
 

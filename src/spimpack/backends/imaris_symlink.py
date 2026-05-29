@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 from pathlib import Path
 
-from spimpack.models import DatasetManifest
+from bids.layout.writing import build_path
+
+from spimpack import __version__
+from spimpack.models import BIDS_MICR_PATTERN, DatasetManifest
+
+_SPIMPACK_GENERATED_BY = {
+    "Name": "SPIMpack",
+    "Version": __version__,
+    "CodeURL": "https://github.com/khanlab/SPIMpack",
+}
 
 
 class LocalImarisSymlinkWriter:
@@ -16,29 +26,37 @@ class LocalImarisSymlinkWriter:
     def write(self, manifest: DatasetManifest, output_dir: Path) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        dataset_description = _build_dataset_description(manifest.dataset_description)
         dataset_description_path = output_dir / "dataset_description.json"
         dataset_description_path.write_text(
-            json.dumps(manifest.dataset_description, indent=2, sort_keys=True) + "\n",
+            json.dumps(dataset_description, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 
         for dataset in manifest.datasets:
-            target_dir = output_dir / dataset.bids_subdir
-            target_dir.mkdir(parents=True, exist_ok=True)
-
             for asset in dataset.assets:
-                stem = f"{asset.output_prefix}_SPIM"
-                link_path = target_dir / f"{stem}.ims"
-                json_path = target_dir / f"{stem}.json"
+                bids_entities = {
+                    "subject": asset.entities.subject,
+                    "sample": asset.entities.sample,
+                    "suffix": "SPIM",
+                    "extension": ".ims",
+                }
+                if asset.entities.session:
+                    bids_entities["session"] = asset.entities.session
+                if asset.entities.acquisition:
+                    bids_entities["acquisition"] = asset.entities.acquisition
+
+                rel_path = build_path(bids_entities, [BIDS_MICR_PATTERN])
+                link_path = output_dir / rel_path
+                json_path = link_path.with_suffix(".json")
+                link_path.parent.mkdir(parents=True, exist_ok=True)
 
                 if link_path.exists() or link_path.is_symlink():
                     link_path.unlink()
 
                 target = asset.source_ims.resolve()
                 if self.relative_symlinks:
-                    target = Path(
-                        _relative_path(from_path=link_path.parent.resolve(), to_path=target)
-                    )
+                    target = Path(os.path.relpath(target, link_path.parent.resolve()))
                 link_path.symlink_to(target)
 
                 sidecar = {
@@ -52,5 +70,14 @@ class LocalImarisSymlinkWriter:
                 )
 
 
-def _relative_path(*, from_path: Path, to_path: Path) -> str:
-    return os.path.relpath(to_path, from_path)
+def _build_dataset_description(user_desc: dict) -> dict:
+    """Return the final dataset_description dict with defaults and SPIMpack GeneratedBy entry."""
+    desc = copy.deepcopy(user_desc)
+    desc.setdefault("BIDSVersion", "1.9.0")
+    desc.setdefault("DatasetType", "raw")
+
+    generated_by = desc.get("GeneratedBy", [])
+    spimpack_entries = [e for e in generated_by if e.get("Name") == "SPIMpack"]
+    if not spimpack_entries:
+        desc["GeneratedBy"] = [_SPIMPACK_GENERATED_BY, *generated_by]
+    return desc

@@ -12,6 +12,7 @@ license = {file = "LICENSE"}
 authors = [{name = "Khan Lab"}]
 dependencies = [
   "PyYAML>=6.0",
+  "pybids>=0.16",
 ]
 
 [project.scripts]

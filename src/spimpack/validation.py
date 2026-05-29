@@ -1,16 +1,38 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from .models import (
     REQUIRED_DATASET_DESCRIPTION_FIELDS,
     REQUIRED_SIDECAR_FIELDS,
+    BidsEntities,
     DatasetManifest,
 )
+
+_BIDS_LABEL_RE = re.compile(r"^[A-Za-z0-9]+$")
+_VALID_DATASET_TYPES = {"raw", "derivative"}
 
 
 class ValidationError(ValueError):
     """Raised when manifest metadata are missing or inconsistent."""
+
+
+def _validate_bids_label(value: str, field_name: str) -> None:
+    """Raise ValidationError if *value* is not a valid BIDS label (alphanumeric only)."""
+    if not _BIDS_LABEL_RE.match(value):
+        raise ValidationError(
+            f"BIDS entity '{field_name}' value {value!r} must contain only letters and numbers"
+        )
+
+
+def _validate_entities(entities: BidsEntities) -> None:
+    _validate_bids_label(entities.subject, "subject (sub)")
+    _validate_bids_label(entities.sample, "sample")
+    if entities.session is not None:
+        _validate_bids_label(entities.session, "session (ses)")
+    if entities.acquisition is not None:
+        _validate_bids_label(entities.acquisition, "acquisition (acq)")
 
 
 def validate_manifest(manifest: DatasetManifest) -> None:
@@ -24,6 +46,17 @@ def validate_manifest(manifest: DatasetManifest) -> None:
             f"dataset_description missing required fields: {', '.join(missing_top)}"
         )
 
+    dataset_type = manifest.dataset_description.get("DatasetType", "")
+    if dataset_type and dataset_type not in _VALID_DATASET_TYPES:
+        raise ValidationError(
+            f"dataset_description DatasetType must be one of {sorted(_VALID_DATASET_TYPES)}, "
+            f"got {dataset_type!r}"
+        )
+
+    authors = manifest.dataset_description.get("Authors")
+    if authors is not None and not isinstance(authors, list):
+        raise ValidationError("dataset_description Authors must be a list")
+
     extra_required = manifest.dataset_description.get("RequiredMicroscopyFields", [])
     if extra_required and not isinstance(extra_required, list):
         raise ValidationError("dataset_description.RequiredMicroscopyFields must be a list")
@@ -36,24 +69,15 @@ def validate_manifest(manifest: DatasetManifest) -> None:
             raise ValidationError(f"duplicate dataset_id: {dataset.dataset_id}")
         dataset_ids.add(dataset.dataset_id)
 
-        if not dataset.bids_subdir:
-            raise ValidationError(f"dataset {dataset.dataset_id} missing bids_subdir")
-        if Path(dataset.bids_subdir).is_absolute():
-            raise ValidationError(
-                f"dataset {dataset.dataset_id} bids_subdir must be a relative path"
-            )
-
         for asset in dataset.assets:
-            if not asset.output_prefix:
-                raise ValidationError(
-                    f"dataset {dataset.dataset_id} has asset missing output_prefix"
-                )
             if not asset.source_ims:
                 raise ValidationError(
                     f"dataset {dataset.dataset_id} has asset missing source_ims"
                 )
             if not asset.source_ims.exists():
                 raise ValidationError(f"source_ims does not exist: {asset.source_ims}")
+
+            _validate_entities(asset.entities)
 
             missing_sidecar = []
             for key in REQUIRED_SIDECAR_FIELDS:
@@ -66,6 +90,6 @@ def validate_manifest(manifest: DatasetManifest) -> None:
 
             if missing_sidecar:
                 raise ValidationError(
-                    f"asset {asset.output_prefix} missing required sidecar metadata: "
+                    f"asset sub-{asset.entities.subject} missing required sidecar metadata: "
                     f"{', '.join(missing_sidecar)}"
                 )

@@ -7,6 +7,8 @@ from pathlib import Path
 
 from spimpack.cli import main
 
+_VALID_DD = "dataset_description:\n  Name: Demo\n  BIDSVersion: 1.9.0\n  DatasetType: raw\n  License: CC0\n"
+
 
 class CliTests(unittest.TestCase):
     def test_cli_packages_from_yaml_and_tsv(self) -> None:
@@ -20,9 +22,11 @@ class CliTests(unittest.TestCase):
                 "\t".join(
                     [
                         "dataset_id",
-                        "bids_subdir",
+                        "sub",
+                        "ses",
+                        "sample",
+                        "acq",
                         "source_ims",
-                        "output_prefix",
                         "orientation",
                         "channel_labels",
                         "Species",
@@ -32,9 +36,11 @@ class CliTests(unittest.TestCase):
                 + "\t".join(
                     [
                         "demo",
-                        "sub-01/ses-01/micr",
+                        "01",
+                        "01",
+                        "s01",
+                        "4x1",
                         str(source),
-                        "sub-01_ses-01",
                         "LPS",
                         "c1;c2",
                         "mouse",
@@ -45,16 +51,7 @@ class CliTests(unittest.TestCase):
             )
 
             manifest = root / "manifest.yml"
-            manifest.write_text(
-                """
-dataset_description:
-  Name: Demo
-  BIDSVersion: 1.10.0
-datasets_tsv: datasets.tsv
-""".strip()
-                + "\n",
-                encoding="utf-8",
-            )
+            manifest.write_text(_VALID_DD + "datasets_tsv: datasets.tsv\n", encoding="utf-8")
 
             out = root / "out"
             rc = main(
@@ -68,9 +65,13 @@ datasets_tsv: datasets.tsv
             )
             self.assertEqual(rc, 0)
 
+            # Path should be BIDS: sub-01/ses-01/micr/sub-01_ses-01_sample-s01_acq-4x1_SPIM.json
             sidecar = json.loads(
-                (out / "sub-01/ses-01/micr/sub-01_ses-01_SPIM.json").read_text(
+                (out / "sub-01/ses-01/micr/sub-01_ses-01_sample-s01_acq-4x1_SPIM.json").read_text(
                     encoding="utf-8"
                 )
             )
             self.assertEqual(sidecar["Species"], "mouse")
+
+            dd = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
+            self.assertTrue(any(e.get("Name") == "SPIMpack" for e in dd["GeneratedBy"]))
