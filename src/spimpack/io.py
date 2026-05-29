@@ -76,7 +76,11 @@ def load_manifest(path: Path) -> DatasetManifest:
                         raise ValueError(
                             f"dataset {dataset_id} has inconsistent bids_subdir values"
                         )
-                    existing.assets.append(asset)
+                    datasets[dataset_id] = DatasetSpec(
+                        dataset_id=existing.dataset_id,
+                        bids_subdir=existing.bids_subdir,
+                        assets=[*existing.assets, asset],
+                    )
                 else:
                     datasets[dataset_id] = DatasetSpec(
                         dataset_id=dataset_id,
