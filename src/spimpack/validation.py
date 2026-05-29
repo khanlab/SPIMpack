@@ -28,7 +28,7 @@ def _validate_bids_label(value: str, field_name: str) -> None:
 
 def _validate_entities(entities: BidsEntities) -> None:
     _validate_bids_label(entities.subject, "subject (sub)")
-    _validate_bids_label(entities.sample, "sample")
+    _validate_bids_label(entities.sample, "sample (sample)")
     if entities.session is not None:
         _validate_bids_label(entities.session, "session (ses)")
     if entities.acquisition is not None:

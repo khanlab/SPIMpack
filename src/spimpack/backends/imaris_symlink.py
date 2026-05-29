@@ -79,5 +79,5 @@ def _build_dataset_description(user_desc: dict) -> dict:
     generated_by = desc.get("GeneratedBy", [])
     spimpack_entries = [e for e in generated_by if e.get("Name") == "SPIMpack"]
     if not spimpack_entries:
-        desc["GeneratedBy"] = [_SPIMPACK_GENERATED_BY, *generated_by]
+        desc["GeneratedBy"] = [*generated_by, _SPIMPACK_GENERATED_BY]
     return desc
