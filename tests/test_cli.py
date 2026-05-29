@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from spimpack.cli import main
@@ -75,3 +77,38 @@ class CliTests(unittest.TestCase):
 
             dd = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
             self.assertTrue(any(e.get("Name") == "SPIMpack" for e in dd["GeneratedBy"]))
+
+    def test_cli_prints_summary_after_packaging(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "raw.ims"
+            source.write_text("ims", encoding="utf-8")
+
+            tsv = root / "datasets.tsv"
+            tsv.write_text(
+                "\t".join(
+                    ["dataset_id", "sub", "ses", "sample", "source_ims", "orientation", "channel_labels"]
+                )
+                + "\n"
+                + "\t".join(["ds1", "01", "01", "s01", str(source), "LPS", "c1"])
+                + "\n"
+                + "\t".join(["ds1", "02", "01", "s01", str(source), "LPS", "c1"])
+                + "\n",
+                encoding="utf-8",
+            )
+
+            manifest = root / "manifest.yml"
+            manifest.write_text(_VALID_DD + "datasets_tsv: datasets.tsv\n", encoding="utf-8")
+
+            out = root / "out"
+            captured = io.StringIO()
+            with unittest.mock.patch("sys.stdout", captured):
+                rc = main(["package", "--manifest", str(manifest), "--output-dir", str(out)])
+
+            self.assertEqual(rc, 0)
+            output = captured.getvalue()
+            self.assertIn("Packaging complete", output)
+            self.assertIn(str(out), output)
+            self.assertIn("Datasets         : 1", output)   # 1 dataset (ds1)
+            self.assertIn("Subjects         : 2", output)   # 2 subjects (01, 02)
+            self.assertIn("Scans            : 2", output)   # 2 scans total

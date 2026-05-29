@@ -37,6 +37,18 @@ def run_package(manifest_path: Path, output_dir: Path, backend: str, relative_sy
     validate_manifest(manifest)
     writer = get_writer(backend, relative_symlinks=relative_symlinks)
     writer.write(manifest, output_dir)
+
+    num_datasets = len(manifest.datasets)
+    all_assets = [asset for dataset in manifest.datasets for asset in dataset.assets]
+    num_scans = len(all_assets)
+    num_subjects = len({asset.entities.subject for asset in all_assets})
+
+    print(f"Packaging complete.")
+    print(f"  Output directory : {output_dir}")
+    print(f"  Datasets         : {num_datasets}")
+    print(f"  Subjects         : {num_subjects}")
+    print(f"  Scans            : {num_scans}")
+
     return 0
 
 
