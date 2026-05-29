@@ -91,6 +91,8 @@ Before writing, SPIMpack validates:
 
 ## CLI
 
+### Package command
+
 ```bash
 spimpack package \
   --manifest /path/to/manifest.yml \
@@ -100,6 +102,47 @@ spimpack package \
 ```
 
 Symlinks are absolute by default. Use `--relative-symlinks` to create relative symlinks.
+
+### QC preview command
+
+```bash
+spimpack qc preview /path/to/sample.ims \
+  [--orientations RAS LPS RPI LPI] \
+  [--level 5] \
+  [--output-dir /path/to/qc_output] \
+  [--port 9753] \
+  [--channel-labels DAPI GFP] \
+  [--no-browser]
+```
+
+The `qc preview` command helps you visually validate image orientation and channel labels
+before packaging a dataset.  It:
+
+1. Loads a low-resolution version of the source `.ims` file for each candidate orientation
+   using [zarrnii](https://github.com/khanlab/zarrnii).
+2. Exports each preview as a NIfTI file.
+3. Launches a local Niivue-based web viewer (`http://localhost:9753/`) in your browser.
+4. Waits for you to select the correct orientation and confirm (or edit) channel labels.
+5. Saves the accepted metadata to `qc_result.json` in the output directory.
+
+**Options**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--orientations` | all 8 axis-aligned strings | Candidate orientation strings to compare |
+| `--level` | `5` | Zarr resolution level (higher = coarser/faster) |
+| `--output-dir` | temp directory | Where to save NIfTI previews and `qc_result.json` |
+| `--port` | `9753` | Local port for the viewer web server |
+| `--channel-labels` | *(none)* | Initial channel labels to pre-populate in the UI |
+| `--no-browser` | *(off)* | Start the server without auto-opening a browser tab |
+
+**Requirements**
+
+The QC preview feature requires the optional `qc` extras:
+
+```bash
+pip install "spimpack[qc]"
+```
 
 ## Future backend model
 

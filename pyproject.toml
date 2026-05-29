@@ -15,6 +15,12 @@ dependencies = [
   "pybids>=0.16",
 ]
 
+[project.optional-dependencies]
+qc = [
+  "zarrnii>=0.1",
+  "nibabel>=4.0",
+]
+
 [project.scripts]
 spimpack = "spimpack.cli:main"
 
