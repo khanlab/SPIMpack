@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spimpack"
+version = "0.1.0"
+description = "SPIM dataset packaging/publishing tool with pluggable backends"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [{name = "Khan Lab"}]
+dependencies = [
+  "PyYAML>=6.0",
+  "pybids>=0.16",
+]
+
+[project.scripts]
+spimpack = "spimpack.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
