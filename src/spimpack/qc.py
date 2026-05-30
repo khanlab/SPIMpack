@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import threading
 import webbrowser
@@ -21,16 +22,22 @@ _HTML_TEMPLATE = """\
 <head>
   <meta charset="UTF-8">
   <title>SPIMpack QC Preview</title>
-  <script src="https://unpkg.com/@niivue/niivue@__NIIVUE_VERSION__/dist/niivue.umd.min.js"></script>
+  <script
+    id="niivue-script"
+    src="https://unpkg.com/@niivue/niivue@__NIIVUE_VERSION__/dist/niivue.umd.min.js"
+    onerror="showError('Failed to load Niivue from CDN (unpkg.com). ' +
+      'Check your internet connection or try a different network. ' +
+      'Open the browser console (F12) for details.')">
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
     #sidebar {
-      width: 280px; padding: 16px; background: #f4f4f4;
+      width: 300px; padding: 16px; background: #f4f4f4;
       overflow-y: auto; flex-shrink: 0; border-right: 1px solid #ddd;
     }
-    #main { flex: 1; display: flex; flex-direction: column; }
-    canvas { display: block; flex: 1; width: 100%; }
+    #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+    canvas { display: block; flex: 1; width: 100%; min-height: 0; }
     h2 { font-size: 16px; margin-bottom: 12px; }
     h3 { font-size: 13px; text-transform: uppercase; color: #888; margin: 16px 0 8px; }
     .orientation-btn {
@@ -54,6 +61,22 @@ _HTML_TEMPLATE = """\
     #submitBtn:hover { background: #1976d2; }
     #status { margin-top: 10px; font-size: 12px; color: #388e3c; word-break: break-all; }
     hr { border: none; border-top: 1px solid #ddd; margin: 12px 0; }
+    #debug-link { font-size: 11px; color: #888; text-decoration: none; display: block; margin-top: 12px; }
+    #debug-link:hover { color: #2196f3; }
+    #error-panel {
+      display: none; position: absolute; top: 16px; left: 16px; right: 16px;
+      background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;
+      padding: 14px 16px; font-size: 13px; color: #856404; z-index: 100;
+    }
+    #error-panel strong { display: block; margin-bottom: 6px; font-size: 14px; }
+    #error-panel ul { margin: 6px 0 0 18px; }
+    #error-panel li { margin-bottom: 4px; }
+    #loading-overlay {
+      display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(17,17,17,0.65); color: #fff; font-size: 14px;
+      align-items: center; justify-content: center; z-index: 50;
+    }
+    #loading-overlay.visible { display: flex; }
   </style>
 </head>
 <body>
@@ -67,11 +90,48 @@ _HTML_TEMPLATE = """\
     <div id="channelFields"></div>
     <button id="submitBtn" onclick="submitResult()">Save Selection</button>
     <div id="status"></div>
+    <a id="debug-link" href="/debug" target="_blank">Debug info (available previews)</a>
   </div>
   <div id="main">
     <canvas id="gl1"></canvas>
+    <div id="loading-overlay">Loading preview\u2026</div>
+    <div id="error-panel"></div>
   </div>
   <script>
+    function showError(msg, bullets) {
+      var panel = document.getElementById('error-panel');
+      var html = '<strong>\u26a0\ufe0f ' + msg + '</strong>';
+      if (bullets && bullets.length) {
+        html += '<ul>';
+        bullets.forEach(function(b) { html += '<li>' + b + '</li>'; });
+        html += '</ul>';
+      }
+      panel.innerHTML = html;
+      panel.style.display = 'block';
+    }
+
+    function hideLoading() {
+      document.getElementById('loading-overlay').classList.remove('visible');
+    }
+    function showLoading() {
+      document.getElementById('loading-overlay').classList.add('visible');
+    }
+
+    // Check WebGL2 availability before doing anything else.
+    (function checkWebGL2() {
+      var testCanvas = document.createElement('canvas');
+      var ctx = testCanvas.getContext('webgl2');
+      if (!ctx) {
+        showError('WebGL2 is not available in this browser.', [
+          'Try a different browser: Chrome or Firefox (desktop) work best.',
+          'If using Chrome, navigate to <code>chrome://flags</code> and ensure "WebGL" is enabled.',
+          'If running inside a VM or remote desktop, hardware GPU acceleration may be disabled \u2014 try <code>chrome --use-gl=swiftshader</code> as a software fallback.',
+          'Some browser privacy extensions (e.g. Canvas Blocker) can block WebGL \u2014 disable them for localhost.',
+          'Verify WebGL2 support at <a href="https://get.webgl.org/webgl2/" target="_blank">get.webgl.org/webgl2</a>.'
+        ]);
+      }
+    })();
+
     const previews = __PREVIEWS_JSON__;
     const channelLabels = __CHANNEL_LABELS_JSON__;
     const orientations = __ORIENTATIONS_JSON__;
@@ -79,21 +139,45 @@ _HTML_TEMPLATE = """\
     let nv = null;
 
     async function initNiivue(url) {
-      if (nv) {
-        await nv.loadVolumes([{ url: url }]);
-      } else {
-        nv = new niivue.Niivue({ show3Dcrosshair: true, backColor: [0.1, 0.1, 0.1, 1] });
-        await nv.attachToCanvas(document.getElementById('gl1'));
-        await nv.loadVolumes([{ url: url }]);
+      if (typeof niivue === 'undefined') {
+        showError('Niivue library did not load.', [
+          'The Niivue script could not be fetched from <code>unpkg.com</code>.',
+          'Check your internet connection \u2014 unpkg.com must be reachable from your browser.',
+          'Open the browser console (F12 \u2192 Console) and look for network errors.',
+          'As a workaround, run <code>spimpack qc preview --no-browser</code>, then open the URL manually in a browser that can reach unpkg.com.'
+        ]);
+        return;
+      }
+      showLoading();
+      try {
+        if (nv) {
+          await nv.loadVolumes([{ url: url }]);
+        } else {
+          nv = new niivue.Niivue({ show3Dcrosshair: true, backColor: [0.1, 0.1, 0.1, 1] });
+          await nv.attachToCanvas(document.getElementById('gl1'));
+          await nv.loadVolumes([{ url: url }]);
+        }
+        document.getElementById('error-panel').style.display = 'none';
+      } catch (err) {
+        showError('Failed to load preview image.', [
+          'Error: ' + err.message,
+          'Open the browser console (F12 \u2192 Network tab) and check that <code>' + url + '</code> returned HTTP 200.',
+          'If the file is missing, re-run with <code>--level</code> set to a lower value (e.g. <code>--level 4</code>) to check whether the zarr level exists.',
+          'Verify the NIfTI files exist by visiting <a href="/debug" target="_blank">/debug</a>.'
+        ]);
+      } finally {
+        hideLoading();
       }
     }
 
     function selectOrientation(orientation) {
       document.getElementById('selectedOrientation').value = orientation;
-      document.querySelectorAll('.orientation-btn').forEach(btn => btn.classList.remove('active'));
-      const btn = document.getElementById('btn-' + orientation);
+      document.querySelectorAll('.orientation-btn').forEach(function(btn) {
+        btn.classList.remove('active');
+      });
+      var btn = document.getElementById('btn-' + orientation);
       if (btn) btn.classList.add('active');
-      const url = previews[orientation];
+      var url = previews[orientation];
       if (url) initNiivue(url);
     }
 
@@ -101,9 +185,9 @@ _HTML_TEMPLATE = """\
     const availableSet = new Set(Object.keys(previews));
     const container = document.getElementById('orientation-buttons');
     orientations.forEach(function(o) {
-      const btn = document.createElement('button');
+      var btn = document.createElement('button');
       btn.id = 'btn-' + o;
-      const available = availableSet.has(o);
+      var available = availableSet.has(o);
       btn.className = 'orientation-btn' + (available ? '' : ' unavailable');
       btn.textContent = available ? o : o + ' (unavailable)';
       if (available) { btn.onclick = function() { selectOrientation(o); }; }
@@ -114,9 +198,9 @@ _HTML_TEMPLATE = """\
     const channelContainer = document.getElementById('channelFields');
     if (channelLabels.length > 0) {
       channelLabels.forEach(function(label, i) {
-        const lbl = document.createElement('label');
+        var lbl = document.createElement('label');
         lbl.textContent = 'Channel ' + (i + 1);
-        const inp = document.createElement('input');
+        var inp = document.createElement('input');
         inp.type = 'text';
         inp.id = 'channel-' + i;
         inp.value = label;
@@ -131,19 +215,19 @@ _HTML_TEMPLATE = """\
     if (defaultOrientation && availableSet.has(defaultOrientation)) {
       selectOrientation(defaultOrientation);
     } else {
-      const firstAvailable = Object.keys(previews)[0];
+      var firstAvailable = Object.keys(previews)[0];
       if (firstAvailable) selectOrientation(firstAvailable);
     }
 
     function submitResult() {
-      const orientation = document.getElementById('selectedOrientation').value;
+      var orientation = document.getElementById('selectedOrientation').value;
       if (!orientation) {
         alert('Please select an orientation first.');
         return;
       }
-      const channels = [];
+      var channels = [];
       channelLabels.forEach(function(_, i) {
-        const el = document.getElementById('channel-' + i);
+        var el = document.getElementById('channel-' + i);
         channels.push(el ? el.value : '');
       });
       fetch('/save', {
@@ -156,7 +240,7 @@ _HTML_TEMPLATE = """\
           (data.channel_labels && data.channel_labels.length
             ? ', channels=[' + data.channel_labels.join(', ') + ']' : '');
       }).catch(function(err) {
-        document.getElementById('status').textContent = 'Error: ' + err;
+        document.getElementById('status').textContent = 'Error saving: ' + err;
       });
     }
   </script>
@@ -233,29 +317,59 @@ def _make_handler(
 
     class _QCHandler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002
-            pass  # Suppress default request logs
+            pass  # Suppress default per-request log noise
+
+        def _send_json(self, data: Any, status: int = 200) -> None:
+            body = json.dumps(data, indent=2).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
         def do_GET(self) -> None:
-            if self.path in ("/", "/index.html"):
+            path = self.path.split("?", 1)[0]  # strip query string
+
+            if path in ("/", "/index.html"):
                 body = html.encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+                return
+
+            if path == "/debug":
+                files = sorted(output_dir.iterdir()) if output_dir.exists() else []
+                self._send_json({
+                    "output_dir": str(output_dir),
+                    "files": [
+                        {"name": f.name, "size_bytes": f.stat().st_size}
+                        for f in files
+                        if f.is_file()
+                    ],
+                })
+                return
+
+            # Serve NIfTI preview files — normalise and strip to basename to prevent
+            # path traversal (e.g. /../../../etc/passwd).
+            filename = os.path.basename(os.path.normpath(path.lstrip("/")))
+            if not filename:
+                self.send_response(400)
+                self.end_headers()
+                return
+            file_path = output_dir / filename
+            if file_path.exists() and file_path.is_file():
+                data = file_path.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
             else:
-                filename = self.path.lstrip("/")
-                file_path = output_dir / filename
-                if file_path.exists():
-                    data = file_path.read_bytes()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/octet-stream")
-                    self.send_header("Content-Length", str(len(data)))
-                    self.end_headers()
-                    self.wfile.write(data)
-                else:
-                    self.send_response(404)
-                    self.end_headers()
+                print(f"[spimpack qc] 404: {path!r} not found in output directory")
+                self.send_response(404)
+                self.end_headers()
 
         def do_POST(self) -> None:
             if self.path == "/save":
@@ -263,12 +377,7 @@ def _make_handler(
                 body = self.rfile.read(length)
                 data: dict[str, Any] = json.loads(body)
                 result_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-                resp = json.dumps(data).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(resp)))
-                self.end_headers()
-                self.wfile.write(resp)
+                self._send_json(data)
                 stop_event.set()
             else:
                 self.send_response(404)

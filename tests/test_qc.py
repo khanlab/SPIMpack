@@ -349,6 +349,37 @@ class TestHttpServer(unittest.TestCase):
             finally:
                 server.shutdown()
 
+    def test_get_debug_returns_file_listing(self) -> None:
+        import http.client
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # Create a preview file in the output dir
+            (tmp_path / "preview_RAS.nii.gz").write_bytes(b"\x00" * 42)
+            result_path = tmp_path / "qc_result.json"
+            stop_event = threading.Event()
+            port = self._find_free_port()
+            html = "<html></html>"
+            handler_class = _make_handler(tmp_path, result_path, html, stop_event)
+            from http.server import HTTPServer
+
+            server = HTTPServer(("localhost", port), handler_class)
+            t = threading.Thread(target=server.serve_forever, daemon=True)
+            t.start()
+            try:
+                conn = http.client.HTTPConnection("localhost", port)
+                conn.request("GET", "/debug")
+                resp = conn.getresponse()
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertIn("files", data)
+                names = [f["name"] for f in data["files"]]
+                self.assertIn("preview_RAS.nii.gz", names)
+                size = next(f["size_bytes"] for f in data["files"] if f["name"] == "preview_RAS.nii.gz")
+                self.assertEqual(size, 42)
+            finally:
+                server.shutdown()
+
 
 class TestDefaultConstants(unittest.TestCase):
     def test_default_orientations_nonempty(self) -> None:
