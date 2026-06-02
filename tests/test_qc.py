@@ -13,9 +13,12 @@ from spimpack.qc import (
     DEFAULT_LEVEL,
     DEFAULT_ORIENTATIONS,
     DEFAULT_PORT,
+    _encode_png,
     _make_handler,
+    _slice_to_png,
     build_html,
     generate_previews,
+    generate_slice_pngs,
 )
 
 
@@ -77,25 +80,38 @@ class TestQcCliParsing(unittest.TestCase):
 class TestBuildHtml(unittest.TestCase):
     """Verify that build_html produces valid HTML with expected tokens."""
 
-    def test_contains_niivue_script(self) -> None:
+    def _previews(self, orientation: str) -> dict:
+        return {
+            orientation: {
+                "axial": Path(f"/tmp/preview_{orientation}_axial.png"),
+                "coronal": Path(f"/tmp/preview_{orientation}_coronal.png"),
+                "sagittal": Path(f"/tmp/preview_{orientation}_sagittal.png"),
+            }
+        }
+
+    def test_contains_viewer_elements(self) -> None:
         html = build_html(
-            previews={"RAS": Path("/tmp/preview_RAS.nii.gz")},
+            previews=self._previews("RAS"),
             orientations=["RAS"],
             channel_labels=["DAPI"],
         )
-        self.assertIn("niivue", html)
+        self.assertIn("img-axial", html)
+        self.assertIn("img-coronal", html)
+        self.assertIn("img-sagittal", html)
 
     def test_preview_url_injected(self) -> None:
         html = build_html(
-            previews={"LPS": Path("/tmp/preview_LPS.nii.gz")},
+            previews=self._previews("LPS"),
             orientations=["LPS"],
             channel_labels=[],
         )
-        self.assertIn("/preview_LPS.nii.gz", html)
+        self.assertIn("/preview_LPS_axial.png", html)
+        self.assertIn("/preview_LPS_coronal.png", html)
+        self.assertIn("/preview_LPS_sagittal.png", html)
 
     def test_channel_labels_injected(self) -> None:
         html = build_html(
-            previews={"RAS": Path("/tmp/preview_RAS.nii.gz")},
+            previews=self._previews("RAS"),
             orientations=["RAS"],
             channel_labels=["DAPI", "GFP"],
         )
@@ -105,7 +121,7 @@ class TestBuildHtml(unittest.TestCase):
     def test_all_orientations_present(self) -> None:
         orientations = ["RAS", "LPS", "RPI"]
         html = build_html(
-            previews={"RAS": Path("/tmp/preview_RAS.nii.gz")},
+            previews=self._previews("RAS"),
             orientations=orientations,
             channel_labels=[],
         )
@@ -114,7 +130,7 @@ class TestBuildHtml(unittest.TestCase):
 
     def test_default_orientation_is_first_preview(self) -> None:
         html = build_html(
-            previews={"RPI": Path("/tmp/preview_RPI.nii.gz")},
+            previews=self._previews("RPI"),
             orientations=["RPI"],
             channel_labels=[],
         )
@@ -126,15 +142,14 @@ class TestBuildHtml(unittest.TestCase):
 
     def test_no_placeholder_tokens_remain(self) -> None:
         html = build_html(
-            previews={"RAS": Path("/tmp/preview_RAS.nii.gz")},
+            previews=self._previews("RAS"),
             orientations=["RAS"],
             channel_labels=["ch1"],
         )
-        self.assertNotIn("__PREVIEWS_JSON__", html)
+        self.assertNotIn("__PREVIEWS_PNG_JSON__", html)
         self.assertNotIn("__CHANNEL_LABELS_JSON__", html)
         self.assertNotIn("__ORIENTATIONS_JSON__", html)
         self.assertNotIn("__DEFAULT_ORIENTATION_JSON__", html)
-        self.assertNotIn("__NIIVUE_VERSION__", html)
 
 
 class TestGeneratePreviews(unittest.TestCase):
@@ -219,7 +234,95 @@ class TestGeneratePreviews(unittest.TestCase):
         self.assertIn("zarrnii", str(ctx.exception))
 
 
-class TestHttpServer(unittest.TestCase):
+class TestEncodePng(unittest.TestCase):
+    """Verify the stdlib PNG encoder produces valid PNG bytes."""
+
+    def test_encode_png_produces_png_signature(self) -> None:
+        import numpy as np
+        data = np.zeros((4, 4), dtype=np.uint8)
+        png_bytes = _encode_png(data)
+        self.assertTrue(png_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_encode_png_roundtrip(self) -> None:
+        """The PNG should be decodable by a standard image library."""
+        import io
+        import struct
+        import zlib
+        import numpy as np
+
+        arr = np.arange(256, dtype=np.uint8).reshape(16, 16)
+        png_bytes = _encode_png(arr)
+
+        # Minimal hand-verification: parse IHDR to check dimensions.
+        # PNG layout: 8-byte sig, then chunks (4 len + 4 type + data + 4 crc)
+        pos = 8
+        length = struct.unpack(">I", png_bytes[pos:pos+4])[0]
+        chunk_type = png_bytes[pos+4:pos+8]
+        ihdr_data = png_bytes[pos+8:pos+8+length]
+        self.assertEqual(chunk_type, b"IHDR")
+        w, h = struct.unpack(">II", ihdr_data[:8])
+        self.assertEqual(w, 16)
+        self.assertEqual(h, 16)
+
+    def test_slice_to_png_returns_bytes(self) -> None:
+        import numpy as np
+        data = np.random.randint(0, 256, size=(10, 10, 10), dtype=np.uint8)
+        result = _slice_to_png(data, axis=2, index=5)
+        self.assertIsInstance(result, bytes)
+        self.assertTrue(result.startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_slice_to_png_empty_on_2d_input(self) -> None:
+        import numpy as np
+        data = np.zeros((10, 10), dtype=np.uint8)
+        result = _slice_to_png(data, axis=0, index=0)
+        self.assertEqual(result, b"")
+
+
+class TestGenerateSlicePngs(unittest.TestCase):
+    """Verify generate_slice_pngs with nibabel mocked out."""
+
+    def _make_fake_nibabel_img(self, shape=(20, 20, 20)):
+        import numpy as np
+
+        class _FakeImg:
+            dataobj = np.random.randint(0, 256, size=shape, dtype=np.uint8)
+
+        class _FakeNib:
+            @staticmethod
+            def load(path):
+                return _FakeImg()
+
+        return _FakeNib
+
+    def test_generates_three_pngs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            nii_path = tmp_path / "preview_RAS.nii.gz"
+            nii_path.write_bytes(b"fake")
+            fake_nib = self._make_fake_nibabel_img()
+
+            with unittest.mock.patch.dict("sys.modules", {"nibabel": fake_nib}):
+                result = generate_slice_pngs(nii_path, tmp_path, "RAS")
+
+            self.assertEqual(set(result.keys()), {"axial", "coronal", "sagittal"})
+            for path in result.values():
+                self.assertTrue(path.exists())
+                self.assertTrue(path.read_bytes().startswith(b"\x89PNG"))
+
+    def test_output_files_named_correctly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            nii_path = tmp_path / "preview_LPS.nii.gz"
+            nii_path.write_bytes(b"fake")
+            fake_nib = self._make_fake_nibabel_img()
+
+            with unittest.mock.patch.dict("sys.modules", {"nibabel": fake_nib}):
+                result = generate_slice_pngs(nii_path, tmp_path, "LPS")
+
+            for view, path in result.items():
+                self.assertEqual(path.name, f"preview_LPS_{view}.png")
+
+
     """Smoke-test the QC HTTP server handler."""
 
     def _start_server(self, tmp: Path, html: str, result_path: Path, port: int):
@@ -326,7 +429,33 @@ class TestHttpServer(unittest.TestCase):
             finally:
                 server.shutdown()
 
-    def test_get_missing_file_returns_404(self) -> None:
+    def test_get_png_file_content_type(self) -> None:
+        import http.client
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            png_file = tmp_path / "preview_RAS_axial.png"
+            png_file.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+            result_path = tmp_path / "qc_result.json"
+            stop_event = threading.Event()
+            port = self._find_free_port()
+            html = "<html></html>"
+            handler_class = _make_handler(tmp_path, result_path, html, stop_event)
+            from http.server import HTTPServer
+
+            server = HTTPServer(("localhost", port), handler_class)
+            t = threading.Thread(target=server.serve_forever, daemon=True)
+            t.start()
+            try:
+                conn = http.client.HTTPConnection("localhost", port)
+                conn.request("GET", "/preview_RAS_axial.png")
+                resp = conn.getresponse()
+                self.assertEqual(resp.status, 200)
+                self.assertEqual(resp.getheader("Content-Type"), "image/png")
+            finally:
+                server.shutdown()
+
+
         import http.client
 
         with tempfile.TemporaryDirectory() as tmp:

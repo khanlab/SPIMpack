@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 import tempfile
 import threading
 import webbrowser
+import zlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
@@ -13,8 +15,6 @@ DEFAULT_ORIENTATIONS = ["RAS", "LAS", "RPS", "LPS", "RAI", "LAI", "RPI", "LPI"]
 DEFAULT_LEVEL = 5
 DEFAULT_PORT = 9753
 
-_NIIVUE_VERSION = "0.39.1"
-
 # HTML template uses __PLACEHOLDER__ tokens to avoid conflicts with CSS/JS braces.
 _HTML_TEMPLATE = """\
 <!DOCTYPE html>
@@ -22,13 +22,6 @@ _HTML_TEMPLATE = """\
 <head>
   <meta charset="UTF-8">
   <title>SPIMpack QC Preview</title>
-  <script
-    id="niivue-script"
-    src="https://unpkg.com/@niivue/niivue@__NIIVUE_VERSION__/dist/niivue.umd.min.js"
-    onerror="showError('Failed to load Niivue from CDN (unpkg.com). ' +
-      'Check your internet connection or try a different network. ' +
-      'Open the browser console (F12) for details.')">
-  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
@@ -37,7 +30,22 @@ _HTML_TEMPLATE = """\
       overflow-y: auto; flex-shrink: 0; border-right: 1px solid #ddd;
     }
     #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
-    canvas { display: block; flex: 1; width: 100%; min-height: 0; }
+    #viewer {
+      flex: 1; display: flex; gap: 4px; padding: 8px;
+      background: #111; min-height: 0; overflow: hidden;
+    }
+    .slice-panel {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      min-width: 0; overflow: hidden;
+    }
+    .slice-label {
+      color: #aaa; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 1px; padding: 4px 0; flex-shrink: 0;
+    }
+    .slice-img {
+      flex: 1; min-height: 0; max-width: 100%; object-fit: contain;
+      display: block; background: #000;
+    }
     h2 { font-size: 16px; margin-bottom: 12px; }
     h3 { font-size: 13px; text-transform: uppercase; color: #888; margin: 16px 0 8px; }
     .orientation-btn {
@@ -69,14 +77,6 @@ _HTML_TEMPLATE = """\
       padding: 14px 16px; font-size: 13px; color: #856404; z-index: 100;
     }
     #error-panel strong { display: block; margin-bottom: 6px; font-size: 14px; }
-    #error-panel ul { margin: 6px 0 0 18px; }
-    #error-panel li { margin-bottom: 4px; }
-    #loading-overlay {
-      display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(17,17,17,0.65); color: #fff; font-size: 14px;
-      align-items: center; justify-content: center; z-index: 50;
-    }
-    #loading-overlay.visible { display: flex; }
   </style>
 </head>
 <body>
@@ -93,81 +93,32 @@ _HTML_TEMPLATE = """\
     <a id="debug-link" href="/debug" target="_blank">Debug info (available previews)</a>
   </div>
   <div id="main">
-    <canvas id="gl1"></canvas>
-    <div id="loading-overlay">Loading preview\u2026</div>
+    <div id="viewer">
+      <div class="slice-panel">
+        <div class="slice-label">Axial</div>
+        <img id="img-axial" class="slice-img" src="" alt="Axial slice">
+      </div>
+      <div class="slice-panel">
+        <div class="slice-label">Coronal</div>
+        <img id="img-coronal" class="slice-img" src="" alt="Coronal slice">
+      </div>
+      <div class="slice-panel">
+        <div class="slice-label">Sagittal</div>
+        <img id="img-sagittal" class="slice-img" src="" alt="Sagittal slice">
+      </div>
+    </div>
     <div id="error-panel"></div>
   </div>
   <script>
-    function showError(msg, bullets) {
-      var panel = document.getElementById('error-panel');
-      var html = '<strong>\u26a0\ufe0f ' + msg + '</strong>';
-      if (bullets && bullets.length) {
-        html += '<ul>';
-        bullets.forEach(function(b) { html += '<li>' + b + '</li>'; });
-        html += '</ul>';
-      }
-      panel.innerHTML = html;
-      panel.style.display = 'block';
-    }
-
-    function hideLoading() {
-      document.getElementById('loading-overlay').classList.remove('visible');
-    }
-    function showLoading() {
-      document.getElementById('loading-overlay').classList.add('visible');
-    }
-
-    // Check WebGL2 availability before doing anything else.
-    (function checkWebGL2() {
-      var testCanvas = document.createElement('canvas');
-      var ctx = testCanvas.getContext('webgl2');
-      if (!ctx) {
-        showError('WebGL2 is not available in this browser.', [
-          'Try a different browser: Chrome or Firefox (desktop) work best.',
-          'If using Chrome, navigate to <code>chrome://flags</code> and ensure "WebGL" is enabled.',
-          'If running inside a VM or remote desktop, hardware GPU acceleration may be disabled \u2014 try <code>chrome --use-gl=swiftshader</code> as a software fallback.',
-          'Some browser privacy extensions (e.g. Canvas Blocker) can block WebGL \u2014 disable them for localhost.',
-          'Verify WebGL2 support at <a href="https://get.webgl.org/webgl2/" target="_blank">get.webgl.org/webgl2</a>.'
-        ]);
-      }
-    })();
-
-    const previews = __PREVIEWS_JSON__;
+    const previews = __PREVIEWS_PNG_JSON__;
     const channelLabels = __CHANNEL_LABELS_JSON__;
     const orientations = __ORIENTATIONS_JSON__;
     const defaultOrientation = __DEFAULT_ORIENTATION_JSON__;
-    let nv = null;
 
-    async function initNiivue(url) {
-      if (typeof niivue === 'undefined') {
-        showError('Niivue library did not load.', [
-          'The Niivue script could not be fetched from <code>unpkg.com</code>.',
-          'Check your internet connection \u2014 unpkg.com must be reachable from your browser.',
-          'Open the browser console (F12 \u2192 Console) and look for network errors.',
-          'As a workaround, run <code>spimpack qc preview --no-browser</code>, then open the URL manually in a browser that can reach unpkg.com.'
-        ]);
-        return;
-      }
-      showLoading();
-      try {
-        if (nv) {
-          await nv.loadVolumes([{ url: url }]);
-        } else {
-          nv = new niivue.Niivue({ show3Dcrosshair: true, backColor: [0.1, 0.1, 0.1, 1] });
-          await nv.attachToCanvas(document.getElementById('gl1'));
-          await nv.loadVolumes([{ url: url }]);
-        }
-        document.getElementById('error-panel').style.display = 'none';
-      } catch (err) {
-        showError('Failed to load preview image.', [
-          'Error: ' + err.message,
-          'Open the browser console (F12 \u2192 Network tab) and check that <code>' + url + '</code> returned HTTP 200.',
-          'If the file is missing, re-run with <code>--level</code> set to a lower value (e.g. <code>--level 4</code>) to check whether the zarr level exists.',
-          'Verify the NIfTI files exist by visiting <a href="/debug" target="_blank">/debug</a>.'
-        ]);
-      } finally {
-        hideLoading();
-      }
+    function showError(msg) {
+      var panel = document.getElementById('error-panel');
+      panel.innerHTML = '<strong>\u26a0\ufe0f ' + msg + '</strong>';
+      panel.style.display = 'block';
     }
 
     function selectOrientation(orientation) {
@@ -177,8 +128,12 @@ _HTML_TEMPLATE = """\
       });
       var btn = document.getElementById('btn-' + orientation);
       if (btn) btn.classList.add('active');
-      var url = previews[orientation];
-      if (url) initNiivue(url);
+      var views = previews[orientation] || {};
+      ['axial', 'coronal', 'sagittal'].forEach(function(view) {
+        var img = document.getElementById('img-' + view);
+        if (img) img.src = views[view] || '';
+      });
+      document.getElementById('error-panel').style.display = 'none';
     }
 
     // Build orientation buttons
@@ -249,6 +204,48 @@ _HTML_TEMPLATE = """\
 """
 
 
+def _png_chunk(tag: bytes, payload: bytes) -> bytes:
+    """Return a single PNG chunk (length + type + data + CRC)."""
+    crc = zlib.crc32(tag + payload) & 0xFFFFFFFF
+    return struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", crc)
+
+
+def _encode_png(data_2d: Any) -> bytes:
+    """Encode a 2-D uint8 array-like as a grayscale PNG using only stdlib.
+
+    ``data_2d`` must expose ``.shape`` (rows, cols) and ``.tobytes()``-like
+    access via row iteration — a NumPy ndarray satisfies this.
+    """
+    h, w = data_2d.shape
+    raw = b"".join(b"\x00" + bytes(data_2d[y]) for y in range(h))
+    compressed = zlib.compress(raw, level=6)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0))
+        + _png_chunk(b"IDAT", compressed)
+        + _png_chunk(b"IEND", b"")
+    )
+
+
+def _slice_to_png(data: Any, axis: int, index: int) -> bytes:
+    """Extract a 2-D slice from a 3-D array, normalise to uint8, and encode as PNG.
+
+    Returns an empty bytes object if the slice cannot be extracted.
+    """
+    import numpy as np
+
+    slc = np.take(data, index, axis=axis)
+    if slc.ndim != 2:
+        return b""
+    mn, mx = float(slc.min()), float(slc.max())
+    if mx > mn:
+        slc = ((slc - mn) / (mx - mn) * 255).astype(np.uint8)
+    else:
+        slc = np.zeros_like(slc, dtype=np.uint8)
+    slc = np.flipud(slc)
+    return _encode_png(slc)
+
+
 def _require_zarrnii() -> Any:
     """Import and return the ZarrNii class, raising a clear error if unavailable."""
     try:
@@ -290,17 +287,67 @@ def generate_previews(
     return previews
 
 
+def generate_slice_pngs(
+    nii_path: Path,
+    output_dir: Path,
+    orientation: str,
+) -> dict[str, Path]:
+    """Generate axial, coronal, and sagittal mid-slice PNG images from a NIfTI file.
+
+    Uses nibabel and numpy (both part of the ``qc`` extras) to load the volume
+    and extract the central slice along each anatomical axis.  PNGs are written
+    to *output_dir* and do not require any third-party image library.
+
+    Returns a mapping of view name (``"axial"``, ``"coronal"``, ``"sagittal"``)
+    -> PNG path.  Views that could not be generated are omitted silently.
+    """
+    try:
+        import nibabel as nib  # type: ignore[import]
+        import numpy as np
+    except ImportError as exc:
+        raise ImportError(
+            "nibabel and numpy are required for slice PNG generation. "
+            "Install them with: pip install nibabel numpy"
+        ) from exc
+
+    img = nib.load(str(nii_path))
+    data = np.asarray(img.dataobj).squeeze()
+
+    if data.ndim < 3:
+        return {}
+
+    view_axes = {"axial": 2, "coronal": 1, "sagittal": 0}
+    slices: dict[str, Path] = {}
+    for view, axis in view_axes.items():
+        if data.shape[axis] == 0:
+            continue
+        mid_idx = data.shape[axis] // 2
+        png_bytes = _slice_to_png(data, axis, mid_idx)
+        if png_bytes:
+            png_path = output_dir / f"preview_{orientation}_{view}.png"
+            png_path.write_bytes(png_bytes)
+            slices[view] = png_path
+    return slices
+
+
 def build_html(
-    previews: dict[str, Path],
+    previews: dict[str, dict[str, Path]],
     orientations: list[str],
     channel_labels: list[str],
 ) -> str:
-    """Return the QC viewer HTML page populated with the given previews."""
-    preview_urls = {o: f"/{p.name}" for o, p in previews.items()}
+    """Return the QC viewer HTML page populated with the given PNG slice previews.
+
+    *previews* maps each orientation string to a dict of view name -> PNG path,
+    e.g. ``{"RAS": {"axial": Path(...), "coronal": Path(...), "sagittal": Path(...)}}``.
+    """
+    preview_urls = {
+        o: {view: f"/{p.name}" for view, p in views.items()}
+        for o, views in previews.items()
+    }
     default_orientation = list(previews.keys())[0] if previews else ""
     return (
-        _HTML_TEMPLATE.replace("__NIIVUE_VERSION__", _NIIVUE_VERSION)
-        .replace("__PREVIEWS_JSON__", json.dumps(preview_urls))
+        _HTML_TEMPLATE
+        .replace("__PREVIEWS_PNG_JSON__", json.dumps(preview_urls))
         .replace("__CHANNEL_LABELS_JSON__", json.dumps(channel_labels))
         .replace("__ORIENTATIONS_JSON__", json.dumps(orientations))
         .replace("__DEFAULT_ORIENTATION_JSON__", json.dumps(default_orientation))
@@ -351,7 +398,7 @@ def _make_handler(
                 })
                 return
 
-            # Serve NIfTI preview files — normalise and strip to basename to prevent
+            # Serve preview files — normalise and strip to basename to prevent
             # path traversal (e.g. /../../../etc/passwd).
             filename = os.path.basename(os.path.normpath(path.lstrip("/")))
             if not filename:
@@ -361,8 +408,10 @@ def _make_handler(
             file_path = output_dir / filename
             if file_path.exists() and file_path.is_file():
                 data = file_path.read_bytes()
+                suffix = Path(filename).suffix.lower()
+                content_type = "image/png" if suffix == ".png" else "application/octet-stream"
                 self.send_response(200)
-                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -435,9 +484,10 @@ def run_qc_preview(
     """Run the interactive QC orientation and channel-label preview workflow.
 
     1. Generates low-resolution NIfTI previews for each candidate *orientations*.
-    2. Serves a Niivue-based viewer on ``http://localhost:<port>/``.
-    3. Waits for the user to confirm an orientation and optionally edit channel labels.
-    4. Saves the accepted metadata to ``<output_dir>/qc_result.json`` and returns it.
+    2. Extracts axial/coronal/sagittal PNG slices from each NIfTI preview.
+    3. Serves a PNG-based viewer on ``http://localhost:<port>/``.
+    4. Waits for the user to confirm an orientation and optionally edit channel labels.
+    5. Saves the accepted metadata to ``<output_dir>/qc_result.json`` and returns it.
     """
     if orientations is None:
         orientations = DEFAULT_ORIENTATIONS
@@ -454,16 +504,31 @@ def run_qc_preview(
             f"Generating level-{level} previews for {len(orientations)} orientation(s): "
             + ", ".join(orientations)
         )
-        previews = generate_previews(source_ims, orientations, level, output_dir)
+        nii_previews = generate_previews(source_ims, orientations, level, output_dir)
 
-        if not previews:
+        if not nii_previews:
             raise RuntimeError(
                 "No previews could be generated. "
                 "Check that the source file is readable and try a higher --level value."
             )
 
-        print(f"Generated {len(previews)} preview(s) in {output_dir}")
-        html = build_html(previews, orientations, channel_labels)
+        print(f"Generated {len(nii_previews)} NIfTI preview(s); extracting PNG slices…")
+        png_previews: dict[str, dict[str, Path]] = {}
+        for orientation, nii_path in nii_previews.items():
+            slices = generate_slice_pngs(nii_path, output_dir, orientation)
+            if slices:
+                png_previews[orientation] = slices
+            else:
+                print(f"Warning: could not extract slices for orientation {orientation!r}")
+
+        if not png_previews:
+            raise RuntimeError(
+                "No PNG slices could be generated from the NIfTI previews. "
+                "Ensure nibabel and numpy are installed (pip install nibabel numpy)."
+            )
+
+        print(f"Launching viewer for {len(png_previews)} orientation(s) in {output_dir}")
+        html = build_html(png_previews, orientations, channel_labels)
         result_path = output_dir / "qc_result.json"
 
         result = launch_viewer(
