@@ -323,6 +323,7 @@ class TestGenerateSlicePngs(unittest.TestCase):
                 self.assertEqual(path.name, f"preview_LPS_{view}.png")
 
 
+class TestHttpServer(unittest.TestCase):
     """Smoke-test the QC HTTP server handler."""
 
     def _start_server(self, tmp: Path, html: str, result_path: Path, port: int):
@@ -455,7 +456,7 @@ class TestGenerateSlicePngs(unittest.TestCase):
             finally:
                 server.shutdown()
 
-
+    def test_get_missing_file_returns_404(self) -> None:
         import http.client
 
         with tempfile.TemporaryDirectory() as tmp:
