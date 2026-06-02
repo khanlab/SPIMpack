@@ -56,6 +56,13 @@ _HTML_TEMPLATE = """\
     .orientation-btn:hover:not(.unavailable) { background: #d0eaff; border-color: #90c0ff; }
     .orientation-btn.active { background: #4caf50; color: white; border-color: #388e3c; }
     .orientation-btn.unavailable { color: #aaa; cursor: not-allowed; font-style: italic; }
+    .channel-btn {
+      display: block; width: 100%; padding: 8px 10px; margin-bottom: 5px;
+      background: #e8e8e8; border: 1px solid #ccc; cursor: pointer;
+      text-align: left; border-radius: 4px; font-size: 13px;
+    }
+    .channel-btn:hover { background: #d0eaff; border-color: #90c0ff; }
+    .channel-btn.active { background: #2196f3; color: white; border-color: #1976d2; }
     label { display: block; font-size: 12px; color: #555; margin-bottom: 3px; }
     input[type=text] {
       width: 100%; padding: 5px 7px; margin-bottom: 10px;
@@ -85,6 +92,11 @@ _HTML_TEMPLATE = """\
     <h3>Candidate Orientations</h3>
     <div id="orientation-buttons"></div>
     <input type="hidden" id="selectedOrientation" value="">
+    <div id="channel-section">
+      <hr>
+      <h3>Channels</h3>
+      <div id="channel-buttons"></div>
+    </div>
     <hr>
     <h3>Channel Labels</h3>
     <div id="channelFields"></div>
@@ -115,24 +127,67 @@ _HTML_TEMPLATE = """\
     const orientations = __ORIENTATIONS_JSON__;
     const defaultOrientation = __DEFAULT_ORIENTATION_JSON__;
 
-    function showError(msg) {
-      var panel = document.getElementById('error-panel');
-      panel.innerHTML = '<strong>\u26a0\ufe0f ' + msg + '</strong>';
-      panel.style.display = 'block';
+    var currentOrientation = '';
+    var currentChannel = '';
+
+    function channelDisplayName(chKey, idx) {
+      return channelLabels.length > idx ? channelLabels[idx] : 'Channel ' + (idx + 1);
+    }
+
+    function updateImages() {
+      var chViews = ((previews[currentOrientation] || {})[currentChannel]) || {};
+      ['axial', 'coronal', 'sagittal'].forEach(function(view) {
+        var img = document.getElementById('img-' + view);
+        if (img) img.src = chViews[view] || '';
+      });
+    }
+
+    function selectChannel(chKey) {
+      currentChannel = chKey;
+      document.querySelectorAll('#channel-buttons .channel-btn').forEach(function(b) {
+        b.classList.remove('active');
+      });
+      var btn = document.getElementById('chbtn-' + chKey);
+      if (btn) btn.classList.add('active');
+      updateImages();
+    }
+
+    function buildChannelButtons(chKeys) {
+      var container = document.getElementById('channel-buttons');
+      container.innerHTML = '';
+      chKeys.forEach(function(chKey, i) {
+        var btn = document.createElement('button');
+        btn.id = 'chbtn-' + chKey;
+        btn.className = 'channel-btn';
+        btn.textContent = channelDisplayName(chKey, i);
+        btn.onclick = function() { selectChannel(chKey); };
+        container.appendChild(btn);
+      });
+      // Hide channel section when there is only one channel
+      document.getElementById('channel-section').style.display =
+        chKeys.length > 1 ? '' : 'none';
     }
 
     function selectOrientation(orientation) {
+      currentOrientation = orientation;
       document.getElementById('selectedOrientation').value = orientation;
-      document.querySelectorAll('.orientation-btn').forEach(function(btn) {
+      document.querySelectorAll('#orientation-buttons .orientation-btn').forEach(function(btn) {
         btn.classList.remove('active');
       });
       var btn = document.getElementById('btn-' + orientation);
       if (btn) btn.classList.add('active');
-      var views = previews[orientation] || {};
-      ['axial', 'coronal', 'sagittal'].forEach(function(view) {
-        var img = document.getElementById('img-' + view);
-        if (img) img.src = views[view] || '';
+
+      var chKeys = Object.keys(previews[orientation] || {});
+      buildChannelButtons(chKeys);
+      if (chKeys.length > 0 && chKeys.indexOf(currentChannel) === -1) {
+        currentChannel = chKeys[0];
+      }
+      document.querySelectorAll('#channel-buttons .channel-btn').forEach(function(b) {
+        b.classList.remove('active');
       });
+      var chBtn = document.getElementById('chbtn-' + currentChannel);
+      if (chBtn) chBtn.classList.add('active');
+      updateImages();
       document.getElementById('error-panel').style.display = 'none';
     }
 
@@ -149,16 +204,21 @@ _HTML_TEMPLATE = """\
       container.appendChild(btn);
     });
 
+    // Determine channel count from the first available orientation's previews
+    var firstOriKey = Object.keys(previews)[0];
+    var firstOriChannels = firstOriKey ? Object.keys(previews[firstOriKey]) : [];
+    var nChannels = firstOriChannels.length;
+
     // Build channel label fields
     const channelContainer = document.getElementById('channelFields');
-    if (channelLabels.length > 0) {
-      channelLabels.forEach(function(label, i) {
+    if (nChannels > 0) {
+      firstOriChannels.forEach(function(chKey, i) {
         var lbl = document.createElement('label');
         lbl.textContent = 'Channel ' + (i + 1);
         var inp = document.createElement('input');
         inp.type = 'text';
         inp.id = 'channel-' + i;
-        inp.value = label;
+        inp.value = channelLabels.length > i ? channelLabels[i] : '';
         channelContainer.appendChild(lbl);
         channelContainer.appendChild(inp);
       });
@@ -181,10 +241,10 @@ _HTML_TEMPLATE = """\
         return;
       }
       var channels = [];
-      channelLabels.forEach(function(_, i) {
+      for (var i = 0; i < nChannels; i++) {
         var el = document.getElementById('channel-' + i);
         channels.push(el ? el.value : '');
-      });
+      }
       fetch('/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -227,8 +287,18 @@ def _encode_png(data_2d: Any) -> bytes:
     )
 
 
-def _slice_to_png(data: Any, axis: int, index: int) -> bytes:
+def _slice_to_png(
+    data: Any,
+    axis: int,
+    index: int,
+    vmin: float | None = None,
+    vmax: float | None = None,
+) -> bytes:
     """Extract a 2-D slice from a 3-D array, normalise to uint8, and encode as PNG.
+
+    *vmin* and *vmax* optionally pin the display range (data units).  Values
+    below *vmin* are clipped to black; values above *vmax* are clipped to white.
+    When not provided the per-slice min/max is used (auto-contrast).
 
     Returns an empty bytes object if the slice cannot be extracted.
     """
@@ -237,9 +307,11 @@ def _slice_to_png(data: Any, axis: int, index: int) -> bytes:
     slc = np.take(data, index, axis=axis)
     if slc.ndim != 2:
         return b""
-    mn, mx = float(slc.min()), float(slc.max())
-    if mx > mn:
-        slc = ((slc - mn) / (mx - mn) * 255).astype(np.uint8)
+    slc = slc.astype(float)
+    lo = float(vmin) if vmin is not None else float(slc.min())
+    hi = float(vmax) if vmax is not None else float(slc.max())
+    if hi > lo:
+        slc = np.clip((slc - lo) / (hi - lo) * 255, 0, 255).astype(np.uint8)
     else:
         slc = np.zeros_like(slc, dtype=np.uint8)
     slc = np.flipud(slc)
@@ -291,15 +363,24 @@ def generate_slice_pngs(
     nii_path: Path,
     output_dir: Path,
     orientation: str,
-) -> dict[str, Path]:
+    vmin: float | None = None,
+    vmax: float | None = None,
+) -> dict[str, dict[str, Path]]:
     """Generate axial, coronal, and sagittal mid-slice PNG images from a NIfTI file.
 
-    Uses nibabel and numpy (both part of the ``qc`` extras) to load the volume
-    and extract the central slice along each anatomical axis.  PNGs are written
-    to *output_dir* and do not require any third-party image library.
+    Supports both 3-D (single-channel) and 4-D (multi-channel) volumes.  For a
+    4-D array the last dimension is treated as the channel axis and a separate
+    set of PNGs is produced for every channel (``"ch0"``, ``"ch1"``, …).
 
-    Returns a mapping of view name (``"axial"``, ``"coronal"``, ``"sagittal"``)
-    -> PNG path.  Views that could not be generated are omitted silently.
+    *vmin* / *vmax* optionally fix the display range (data units) for all
+    slices.  When not provided, per-slice auto-contrast is applied.
+
+    Uses nibabel and numpy (both part of the ``qc`` extras) to load the volume.
+    PNGs are written to *output_dir* without any third-party image library.
+
+    Returns a mapping of ``{channel_key: {view_name: PNG path}}``.  For 3-D
+    data the only channel key is ``"ch0"``.  Views or channels that could not
+    be generated are omitted silently.
     """
     try:
         import nibabel as nib  # type: ignore[import]
@@ -316,33 +397,56 @@ def generate_slice_pngs(
     if data.ndim < 3:
         return {}
 
+    # Split 4-D data (X, Y, Z, C) into per-channel 3-D arrays.
+    if data.ndim == 4:
+        channel_arrays = [data[..., c] for c in range(data.shape[3])]
+    else:
+        channel_arrays = [data]
+
     view_axes = {"axial": 2, "coronal": 1, "sagittal": 0}
-    slices: dict[str, Path] = {}
-    for view, axis in view_axes.items():
-        if data.shape[axis] == 0:
-            continue
-        mid_idx = data.shape[axis] // 2
-        png_bytes = _slice_to_png(data, axis, mid_idx)
-        if png_bytes:
-            png_path = output_dir / f"preview_{orientation}_{view}.png"
-            png_path.write_bytes(png_bytes)
-            slices[view] = png_path
-    return slices
+    result: dict[str, dict[str, Path]] = {}
+
+    for ch_idx, ch_data in enumerate(channel_arrays):
+        ch_key = f"ch{ch_idx}"
+        ch_slices: dict[str, Path] = {}
+        for view, axis in view_axes.items():
+            if ch_data.shape[axis] == 0:
+                continue
+            mid_idx = ch_data.shape[axis] // 2
+            png_bytes = _slice_to_png(ch_data, axis, mid_idx, vmin=vmin, vmax=vmax)
+            if png_bytes:
+                png_path = output_dir / f"preview_{orientation}_{ch_key}_{view}.png"
+                png_path.write_bytes(png_bytes)
+                ch_slices[view] = png_path
+        if ch_slices:
+            result[ch_key] = ch_slices
+
+    return result
 
 
 def build_html(
-    previews: dict[str, dict[str, Path]],
+    previews: dict[str, dict[str, dict[str, Path]]],
     orientations: list[str],
     channel_labels: list[str],
 ) -> str:
     """Return the QC viewer HTML page populated with the given PNG slice previews.
 
-    *previews* maps each orientation string to a dict of view name -> PNG path,
-    e.g. ``{"RAS": {"axial": Path(...), "coronal": Path(...), "sagittal": Path(...)}}``.
+    *previews* maps each orientation string to a dict of channel keys to view
+    dicts, e.g.::
+
+        {
+            "RAS": {
+                "ch0": {"axial": Path(...), "coronal": Path(...), "sagittal": Path(...)},
+                "ch1": {"axial": Path(...), ...},
+            }
+        }
     """
-    preview_urls = {
-        o: {view: f"/{p.name}" for view, p in views.items()}
-        for o, views in previews.items()
+    preview_urls: dict[str, dict[str, dict[str, str]]] = {
+        o: {
+            ch: {view: f"/{p.name}" for view, p in views.items()}
+            for ch, views in channels.items()
+        }
+        for o, channels in previews.items()
     }
     default_orientation = list(previews.keys())[0] if previews else ""
     return (
@@ -480,14 +584,18 @@ def run_qc_preview(
     port: int = DEFAULT_PORT,
     channel_labels: list[str] | None = None,
     open_browser: bool = True,
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> dict[str, Any]:
     """Run the interactive QC orientation and channel-label preview workflow.
 
     1. Generates low-resolution NIfTI previews for each candidate *orientations*.
-    2. Extracts axial/coronal/sagittal PNG slices from each NIfTI preview.
+    2. Extracts axial/coronal/sagittal PNG slices for every channel in each NIfTI.
     3. Serves a PNG-based viewer on ``http://localhost:<port>/``.
     4. Waits for the user to confirm an orientation and optionally edit channel labels.
     5. Saves the accepted metadata to ``<output_dir>/qc_result.json`` and returns it.
+
+    *vmin* and *vmax* optionally pin the display brightness range (data units).
     """
     if orientations is None:
         orientations = DEFAULT_ORIENTATIONS
@@ -513,9 +621,9 @@ def run_qc_preview(
             )
 
         print(f"Generated {len(nii_previews)} NIfTI preview(s); extracting PNG slices…")
-        png_previews: dict[str, dict[str, Path]] = {}
+        png_previews: dict[str, dict[str, dict[str, Path]]] = {}
         for orientation, nii_path in nii_previews.items():
-            slices = generate_slice_pngs(nii_path, output_dir, orientation)
+            slices = generate_slice_pngs(nii_path, output_dir, orientation, vmin=vmin, vmax=vmax)
             if slices:
                 png_previews[orientation] = slices
             else:

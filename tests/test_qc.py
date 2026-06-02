@@ -43,6 +43,8 @@ class TestQcCliParsing(unittest.TestCase):
         self.assertEqual(args.port, DEFAULT_PORT)
         self.assertIsNone(args.channel_labels)
         self.assertFalse(args.no_browser)
+        self.assertIsNone(args.vmin)
+        self.assertIsNone(args.vmax)
 
     def test_qc_preview_all_options(self) -> None:
         args = self._parse(
@@ -63,6 +65,10 @@ class TestQcCliParsing(unittest.TestCase):
                 "DAPI",
                 "GFP",
                 "--no-browser",
+                "--vmin",
+                "100",
+                "--vmax",
+                "4000",
             ]
         )
         self.assertEqual(args.orientations, ["RAS", "LPS"])
@@ -71,6 +77,8 @@ class TestQcCliParsing(unittest.TestCase):
         self.assertEqual(args.port, 8080)
         self.assertEqual(args.channel_labels, ["DAPI", "GFP"])
         self.assertTrue(args.no_browser)
+        self.assertEqual(args.vmin, 100.0)
+        self.assertEqual(args.vmax, 4000.0)
 
     def test_qc_subcommand_required(self) -> None:
         with self.assertRaises(SystemExit):
@@ -83,9 +91,11 @@ class TestBuildHtml(unittest.TestCase):
     def _previews(self, orientation: str) -> dict:
         return {
             orientation: {
-                "axial": Path(f"/tmp/preview_{orientation}_axial.png"),
-                "coronal": Path(f"/tmp/preview_{orientation}_coronal.png"),
-                "sagittal": Path(f"/tmp/preview_{orientation}_sagittal.png"),
+                "ch0": {
+                    "axial": Path(f"/tmp/preview_{orientation}_ch0_axial.png"),
+                    "coronal": Path(f"/tmp/preview_{orientation}_ch0_coronal.png"),
+                    "sagittal": Path(f"/tmp/preview_{orientation}_ch0_sagittal.png"),
+                }
             }
         }
 
@@ -105,9 +115,9 @@ class TestBuildHtml(unittest.TestCase):
             orientations=["LPS"],
             channel_labels=[],
         )
-        self.assertIn("/preview_LPS_axial.png", html)
-        self.assertIn("/preview_LPS_coronal.png", html)
-        self.assertIn("/preview_LPS_sagittal.png", html)
+        self.assertIn("/preview_LPS_ch0_axial.png", html)
+        self.assertIn("/preview_LPS_ch0_coronal.png", html)
+        self.assertIn("/preview_LPS_ch0_sagittal.png", html)
 
     def test_channel_labels_injected(self) -> None:
         html = build_html(
@@ -150,6 +160,32 @@ class TestBuildHtml(unittest.TestCase):
         self.assertNotIn("__CHANNEL_LABELS_JSON__", html)
         self.assertNotIn("__ORIENTATIONS_JSON__", html)
         self.assertNotIn("__DEFAULT_ORIENTATION_JSON__", html)
+
+    def test_multi_channel_previews(self) -> None:
+        """Multi-channel (4D) previews appear correctly in generated HTML."""
+        previews = {
+            "RAS": {
+                "ch0": {
+                    "axial": Path("/tmp/preview_RAS_ch0_axial.png"),
+                    "coronal": Path("/tmp/preview_RAS_ch0_coronal.png"),
+                    "sagittal": Path("/tmp/preview_RAS_ch0_sagittal.png"),
+                },
+                "ch1": {
+                    "axial": Path("/tmp/preview_RAS_ch1_axial.png"),
+                    "coronal": Path("/tmp/preview_RAS_ch1_coronal.png"),
+                    "sagittal": Path("/tmp/preview_RAS_ch1_sagittal.png"),
+                },
+            }
+        }
+        html = build_html(
+            previews=previews,
+            orientations=["RAS"],
+            channel_labels=["DAPI", "GFP"],
+        )
+        self.assertIn("/preview_RAS_ch0_axial.png", html)
+        self.assertIn("/preview_RAS_ch1_axial.png", html)
+        self.assertIn("DAPI", html)
+        self.assertIn("GFP", html)
 
 
 class TestGeneratePreviews(unittest.TestCase):
@@ -271,6 +307,13 @@ class TestEncodePng(unittest.TestCase):
         self.assertIsInstance(result, bytes)
         self.assertTrue(result.startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_slice_to_png_with_vmin_vmax(self) -> None:
+        import numpy as np
+        data = np.full((5, 5, 5), fill_value=128, dtype=np.uint8)
+        # With vmin=0, vmax=255, a constant-128 slice should not be all-black
+        result = _slice_to_png(data, axis=2, index=2, vmin=0, vmax=255)
+        self.assertTrue(result.startswith(b"\x89PNG\r\n\x1a\n"))
+
     def test_slice_to_png_empty_on_2d_input(self) -> None:
         import numpy as np
         data = np.zeros((10, 10), dtype=np.uint8)
@@ -294,20 +337,41 @@ class TestGenerateSlicePngs(unittest.TestCase):
 
         return _FakeNib
 
-    def test_generates_three_pngs(self) -> None:
+    def test_generates_single_channel_pngs(self) -> None:
+        """3-D NIfTI produces a single channel (ch0) with three views."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             nii_path = tmp_path / "preview_RAS.nii.gz"
             nii_path.write_bytes(b"fake")
-            fake_nib = self._make_fake_nibabel_img()
+            fake_nib = self._make_fake_nibabel_img(shape=(20, 20, 20))
 
             with unittest.mock.patch.dict("sys.modules", {"nibabel": fake_nib}):
                 result = generate_slice_pngs(nii_path, tmp_path, "RAS")
 
-            self.assertEqual(set(result.keys()), {"axial", "coronal", "sagittal"})
-            for path in result.values():
+            self.assertEqual(set(result.keys()), {"ch0"})
+            self.assertEqual(set(result["ch0"].keys()), {"axial", "coronal", "sagittal"})
+            for path in result["ch0"].values():
                 self.assertTrue(path.exists())
                 self.assertTrue(path.read_bytes().startswith(b"\x89PNG"))
+
+    def test_generates_multi_channel_pngs(self) -> None:
+        """4-D NIfTI (X, Y, Z, C) produces one channel dict per channel."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            nii_path = tmp_path / "preview_RAS.nii.gz"
+            nii_path.write_bytes(b"fake")
+            # Shape (20, 20, 20, 2) – 2 channels
+            fake_nib = self._make_fake_nibabel_img(shape=(20, 20, 20, 2))
+
+            with unittest.mock.patch.dict("sys.modules", {"nibabel": fake_nib}):
+                result = generate_slice_pngs(nii_path, tmp_path, "RAS")
+
+            self.assertEqual(set(result.keys()), {"ch0", "ch1"})
+            for ch_views in result.values():
+                self.assertEqual(set(ch_views.keys()), {"axial", "coronal", "sagittal"})
+                for path in ch_views.values():
+                    self.assertTrue(path.exists())
+                    self.assertTrue(path.read_bytes().startswith(b"\x89PNG"))
 
     def test_output_files_named_correctly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -319,8 +383,9 @@ class TestGenerateSlicePngs(unittest.TestCase):
             with unittest.mock.patch.dict("sys.modules", {"nibabel": fake_nib}):
                 result = generate_slice_pngs(nii_path, tmp_path, "LPS")
 
-            for view, path in result.items():
-                self.assertEqual(path.name, f"preview_LPS_{view}.png")
+            for ch_key, ch_views in result.items():
+                for view, path in ch_views.items():
+                    self.assertEqual(path.name, f"preview_LPS_{ch_key}_{view}.png")
 
 
 class TestHttpServer(unittest.TestCase):

@@ -81,6 +81,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Start the server but do not open a browser window automatically",
     )
+    qc_preview.add_argument(
+        "--vmin",
+        type=float,
+        default=None,
+        metavar="VALUE",
+        help="Lower bound of the display brightness range (data units). "
+             "Values below this are shown as black. Default: per-slice auto-contrast.",
+    )
+    qc_preview.add_argument(
+        "--vmax",
+        type=float,
+        default=None,
+        metavar="VALUE",
+        help="Upper bound of the display brightness range (data units). "
+             "Values above this are shown as white. Default: per-slice auto-contrast.",
+    )
 
     return parser
 
@@ -118,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
                     port=args.port,
                     channel_labels=args.channel_labels,
                     open_browser=not args.no_browser,
+                    vmin=args.vmin,
+                    vmax=args.vmax,
                 )
     except (ValidationError, ValueError, FileNotFoundError) as exc:
         parser.exit(status=2, message=f"error: {exc}\n")
