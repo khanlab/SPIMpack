@@ -6,12 +6,12 @@ SPIMpack is a standalone Python package for packaging/publishing SPIM datasets f
 
 - Shared metadata/model layer for dataset manifests and validation
 - Backend writer layer (pluggable)
-- Initial backend: local Imaris symlink packaging
+- Initial backend: local symlink packaging
 - CLI packaging workflow independent of SPIMprep internals and Snakemake
 
 ## Current backend
 
-`local-imaris-symlink` writes:
+`symlink` writes:
 
 - top-level `dataset_description.json` with auto-injected SPIMpack `GeneratedBy` entry
 - sidecars named `*_SPIM.json`
@@ -25,8 +25,8 @@ sub-{subject}/[ses-{session}/]micr/sub-{subject}[_ses-{session}][_sample-{sample
 
 Sidecars preserve metadata that cannot be embedded in Imaris assets, including required SPIM fields:
 
-- `orientation`
-- `channel_labels`
+- `OrientationStringXYZ`
+- `SampleStaining`
 - additional metadata fields from manifest input (and optional `RequiredMicroscopyFields`)
 
 ## Input format
@@ -53,28 +53,28 @@ The writer automatically appends a `GeneratedBy` entry for SPIMpack if not alrea
 
 Required:
 
-| Column          | Description                              |
-|-----------------|------------------------------------------|
-| `dataset_id`    | Logical dataset grouping key             |
-| `sub`           | BIDS subject label (alphanumeric only)   |
-| `sample`        | BIDS sample label (alphanumeric only)    |
-| `source_ims`    | Absolute path to the source `.ims` file  |
-| `orientation`   | Image orientation (e.g. `LPS`)          |
-| `channel_labels`| Semicolon-separated channel names       |
+| Column                   | Description                              |
+|--------------------------|------------------------------------------|
+| `dataset_id`             | Logical dataset grouping key             |
+| `subject`                | BIDS subject label (alphanumeric only)   |
+| `sample`                 | BIDS sample label (alphanumeric only)    |
+| `spim_path`              | Absolute path to the source microscopy asset (e.g. `.ims`, `.ome.zarr`) |
+| `orientation_string_xyz` | Image orientation (e.g. `LPS`)           |
+| `sample_staining`        | Semicolon-separated channel names        |
 
 Optional (entity columns):
 
-| Column | Description                                          |
-|--------|------------------------------------------------------|
-| `ses`  | BIDS session label (alphanumeric only)               |
-| `acq`  | BIDS acquisition label, e.g. objective `4x1`        |
+| Column | Description                                                |
+|--------------------------|------------------------------------------|
+| `session`                | BIDS session label (alphanumeric only)   |
+| `acquisition`            | BIDS acquisition label, e.g. `4x`        |
 
 Any additional columns are written into the sidecar JSON.
 
 ### Example TSV
 
 ```tsv
-dataset_id	sub	ses	sample	acq	source_ims	orientation	channel_labels	Species
+dataset_id	subject	session	sample	acquisition	spim_path	orientation_string_xyz	sample_staining	Species
 cohort1	01	01	s01	4x1	/data/raw/sub01.ims	LPS	nuclei;membrane	mouse
 ```
 
@@ -86,8 +86,8 @@ Before writing, SPIMpack validates:
 - `DatasetType` must be `raw` or `derivative`
 - `Authors` must be a list if provided
 - BIDS entity values (`sub`, `ses`, `sample`, `acq`) must be **alphanumeric only** (letters and numbers, no hyphens or special characters)
-- Required sidecar fields: `orientation`, `channel_labels`
-- Source `.ims` files must exist
+- Required columns to map to BIDS sidecar metadata: `orientation_string_xyz`, `sample_staining`
+- Source SPIM datasets (can be .ims, .ome.zarr, .ozx; any format ZarrNii supports) must exist
 
 ## CLI
 
@@ -95,7 +95,7 @@ Before writing, SPIMpack validates:
 spimpack package \
   --manifest /path/to/manifest.yml \
   --output-dir /path/to/output \
-  --backend local-imaris-symlink \
+  --backend symlink \
   [--relative-symlinks]
 ```
 
