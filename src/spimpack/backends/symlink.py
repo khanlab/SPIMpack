@@ -17,8 +17,8 @@ _SPIMPACK_GENERATED_BY = {
 }
 
 
-class LocalImarisSymlinkWriter:
-    name = "imaris_symlink"
+class SymlinkWriter:
+    name = "symlink"
 
     def __init__(self, *, relative_symlinks: bool = False) -> None:
         self.relative_symlinks = relative_symlinks
@@ -58,8 +58,8 @@ class LocalImarisSymlinkWriter:
                 link_path.symlink_to(target)
 
                 sidecar = {
-                    "orientation": asset.orientation,
-                    "channel_labels": asset.channel_labels,
+                    "OrientationStringXYZ": asset.orientation_string_xyz,
+                    "SampleStaining": asset.sample_staining,
                     **asset.metadata,
                 }
                 json_path.write_text(

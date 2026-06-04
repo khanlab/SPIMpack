@@ -21,8 +21,8 @@ def build_parser() -> argparse.ArgumentParser:
     package.add_argument("--output-dir", required=True, type=Path, help="Output dataset root")
     package.add_argument(
         "--backend",
-        default="imaris_symlink",
-        help="Backend writer name (default: imaris_symlink)",
+        default="symlink",
+        help="Backend writer name (default: symlink)",
     )
     package.add_argument(
         "--relative-symlinks",

@@ -60,8 +60,8 @@ def load_manifest(path: Path) -> DatasetManifest:
             ImageAsset(
                 source_ims=Path(asset["source_ims"]).expanduser(),
                 entities=_entities_from_dict(asset),
-                orientation=asset["orientation"],
-                channel_labels=_parse_channels(asset["channel_labels"]),
+                orientation_string_xyz=asset["orientation_string_xyz"],
+                sample_staining=_parse_channels(asset["sample_staining"]),
                 metadata=asset.get("metadata", {}),
             )
             for asset in dataset.get("assets", [])
@@ -84,8 +84,8 @@ def load_manifest(path: Path) -> DatasetManifest:
                 asset = ImageAsset(
                     source_ims=Path(row["source_ims"]).expanduser(),
                     entities=_entities_from_row(row),
-                    orientation=row["orientation"],
-                    channel_labels=_parse_channels(row["channel_labels"]),
+                    orientation_string_xyz=row["orientation_string_xyz"],
+                    sample_staining=_parse_channels(row["sample_staining"]),
                     metadata=_parse_row_metadata(row, fieldnames),
                 )
                 existing = datasets.get(dataset_id)

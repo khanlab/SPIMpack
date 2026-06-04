@@ -10,12 +10,12 @@ from spimpack.validation import ValidationError, validate_manifest
 _VALID_DD = {"Name": "Demo", "BIDSVersion": "1.9.0", "DatasetType": "raw", "License": "CC0"}
 
 
-def _valid_asset(ims: Path, *, orientation: str = "LPS") -> ImageAsset:
+def _valid_asset(ims: Path, *, orientation_string_xyz: str = "LPS") -> ImageAsset:
     return ImageAsset(
         source_ims=ims,
         entities=BidsEntities(subject="01", sample="s01"),
-        orientation=orientation,
-        channel_labels=["ch1"],
+        orientation_string_xyz=orientation_string_xyz,
+        sample_staining=["ch1"],
     )
 
 
@@ -29,7 +29,7 @@ class ValidationTests(unittest.TestCase):
                 datasets=[
                     DatasetSpec(
                         dataset_id="d1",
-                        assets=[_valid_asset(ims, orientation="")],
+                        assets=[_valid_asset(ims, orientation_string_xyz="")],
                     )
                 ],
             )
@@ -61,8 +61,8 @@ class ValidationTests(unittest.TestCase):
                             ImageAsset(
                                 source_ims=ims,
                                 entities=BidsEntities(subject="01-bad!", sample="s01"),
-                                orientation="LPS",
-                                channel_labels=["ch1"],
+                                orientation_string_xyz="LPS",
+                                sample_staining=["ch1"],
                             )
                         ],
                     )
@@ -107,8 +107,8 @@ class ValidationTests(unittest.TestCase):
                             ImageAsset(
                                 source_ims=ims,
                                 entities=BidsEntities(subject="01", sample="s01"),
-                                orientation="LPS",
-                                channel_labels=["ch1"],
+                                orientation_string_xyz="LPS",
+                                sample_staining=["ch1"],
                                 metadata={},
                             )
                         ],

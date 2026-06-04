@@ -29,8 +29,8 @@ class CliTests(unittest.TestCase):
                         "sample",
                         "acq",
                         "source_ims",
-                        "orientation",
-                        "channel_labels",
+                        "orientation_string_xyz",
+                        "sample_staining",
                         "Species",
                     ]
                 )
@@ -87,7 +87,7 @@ class CliTests(unittest.TestCase):
             tsv = root / "datasets.tsv"
             tsv.write_text(
                 "\t".join(
-                    ["dataset_id", "sub", "ses", "sample", "source_ims", "orientation", "channel_labels"]
+                    ["dataset_id", "sub", "ses", "sample", "source_ims", "orientation_string_xyz", "sample_staining"]
                 )
                 + "\n"
                 + "\t".join(["ds1", "01", "01", "s01", str(source), "LPS", "c1"])

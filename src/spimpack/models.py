@@ -8,10 +8,10 @@ from typing import Any
 REQUIRED_DATASET_DESCRIPTION_FIELDS = ("Name", "BIDSVersion", "DatasetType", "License")
 
 #: Names of ImageAsset attributes that are written directly to the JSON sidecar.
-SIDECAR_ASSET_FIELDS = ("orientation", "channel_labels")
+SIDECAR_ASSET_FIELDS = ("orientation_string_xyz", "sample_staining")
 
 #: TSV columns that are required and map to ImageAsset / dataset fields (not entities, not sidecar).
-REQUIRED_CORE_TSV_COLUMNS = ("dataset_id", "source_ims", "orientation", "channel_labels")
+REQUIRED_CORE_TSV_COLUMNS = ("dataset_id", "source_ims", "orientation_string_xyz", "sample_staining")
 
 #: Path pattern used by pybids build_path for BIDS microscopy assets.
 BIDS_MICR_PATTERN = (
@@ -54,8 +54,8 @@ class ImageAsset:
 
     source_ims: Path
     entities: BidsEntities
-    orientation: str
-    channel_labels: list[str]
+    orientation_string_xyz: str
+    sample_staining: list[str]
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
