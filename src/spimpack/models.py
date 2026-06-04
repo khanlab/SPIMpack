@@ -6,7 +6,7 @@ from typing import Any
 
 
 REQUIRED_DATASET_DESCRIPTION_FIELDS = ("Name", "BIDSVersion", "DatasetType", "License")
-REQUIRED_SIDECAR_FIELDS = ("orientation", "channel_labels")
+REQUIRED_SIDECAR_FIELDS = ("orientation_string_xyz", "sample_staining")
 
 #: Path pattern used by pybids build_path for BIDS microscopy assets.
 BIDS_MICR_PATTERN = (
@@ -29,10 +29,10 @@ class BidsEntities:
 class ImageAsset:
     """A source microscopy image and its required sidecar metadata."""
 
-    source_ims: Path
+    spim_path: Path
     entities: BidsEntities
-    orientation: str
-    channel_labels: list[str]
+    orientation_string_xyz: str
+    sample_staining: list[str]
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

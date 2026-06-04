@@ -11,13 +11,13 @@ from .models import BidsEntities, DatasetManifest, DatasetSpec, ImageAsset
 
 REQUIRED_TSV_COLUMNS = (
     "dataset_id",
-    "sub",
+    "subject",
     "sample",
-    "source_ims",
-    "orientation",
-    "channel_labels",
+    "spim_path",
+    "orientation_string_xyz",
+    "sample_staining",
 )
-OPTIONAL_TSV_ENTITY_COLUMNS = ("ses", "acq")
+OPTIONAL_TSV_ENTITY_COLUMNS = ("session", "acquisition")
 
 
 def _parse_channels(raw: str | list[str]) -> list[str]:
@@ -29,19 +29,19 @@ def _parse_channels(raw: str | list[str]) -> list[str]:
 
 def _entities_from_row(row: dict[str, str]) -> BidsEntities:
     return BidsEntities(
-        subject=row["sub"],
+        subject=row["subject"],
         sample=row["sample"],
-        session=row.get("ses") or None,
-        acquisition=row.get("acq") or None,
+        session=row.get("sesssion") or None,
+        acquisition=row.get("acquisition") or None,
     )
 
 
 def _entities_from_dict(asset: dict[str, Any]) -> BidsEntities:
     return BidsEntities(
-        subject=asset["sub"],
+        subject=asset["subject"],
         sample=asset["sample"],
-        session=asset.get("ses") or None,
-        acquisition=asset.get("acq") or None,
+        session=asset.get("session") or None,
+        acquisition=asset.get("acquisition") or None,
     )
 
 
@@ -56,10 +56,10 @@ def load_manifest(path: Path) -> DatasetManifest:
         dataset_id = dataset["dataset_id"]
         assets = [
             ImageAsset(
-                source_ims=Path(asset["source_ims"]).expanduser(),
+                spim_path=Path(asset["spim_path"]).expanduser(),
                 entities=_entities_from_dict(asset),
-                orientation=asset["orientation"],
-                channel_labels=_parse_channels(asset["channel_labels"]),
+                orientation_string_xyz=asset["orientation_string_xyz"],
+                sample_staining=_parse_channels(asset["sample_staining"]),
                 metadata=asset.get("metadata", {}),
             )
             for asset in dataset.get("assets", [])
@@ -80,10 +80,10 @@ def load_manifest(path: Path) -> DatasetManifest:
             for row in reader:
                 dataset_id = row["dataset_id"]
                 asset = ImageAsset(
-                    source_ims=Path(row["source_ims"]).expanduser(),
+                    spim_path=Path(row["spim_path"]).expanduser(),
                     entities=_entities_from_row(row),
-                    orientation=row["orientation"],
-                    channel_labels=_parse_channels(row["channel_labels"]),
+                    orientation_string_xyz=row["orientation_string_xyz"],
+                    sample_staining=_parse_channels(row["sample_staining"]),
                     metadata=_parse_row_metadata(row, fieldnames),
                 )
                 existing = datasets.get(dataset_id)
