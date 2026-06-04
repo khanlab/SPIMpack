@@ -58,7 +58,7 @@ Required:
 | `dataset_id`             | Logical dataset grouping key             |
 | `subject`                | BIDS subject label (alphanumeric only)   |
 | `sample`                 | BIDS sample label (alphanumeric only)    |
-| `spim_path`              | Absolute path to the source `.ims` file  |
+| `spim_path`              | Absolute path to the source microscopy asset (e.g. `.ims`, `.ome.zarr`) |
 | `orientation_string_xyz` | Image orientation (e.g. `LPS`)           |
 | `sample_staining`        | Semicolon-separated channel names        |
 
