@@ -69,12 +69,12 @@ def validate_manifest(manifest: DatasetManifest) -> None:
         dataset_ids.add(dataset.dataset_id)
 
         for asset in dataset.assets:
-            if not asset.source_ims:
+            if not asset.spim_path:
                 raise ValidationError(
-                    f"dataset {dataset.dataset_id} has asset missing source_ims"
+                    f"dataset {dataset.dataset_id} has asset missing spim_path"
                 )
-            if not asset.source_ims.exists():
-                raise ValidationError(f"source_ims does not exist: {asset.source_ims}")
+            if not asset.spim_path.exists():
+                raise ValidationError(f"spim_path does not exist: {asset.spim_path}")
 
             _validate_entities(asset.entities)
 

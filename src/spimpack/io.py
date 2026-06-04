@@ -58,7 +58,7 @@ def load_manifest(path: Path) -> DatasetManifest:
         dataset_id = dataset["dataset_id"]
         assets = [
             ImageAsset(
-                source_ims=Path(asset["source_ims"]).expanduser(),
+                spim_path=Path(asset["spim_path"]).expanduser(),
                 entities=_entities_from_dict(asset),
                 orientation_string_xyz=asset["orientation_string_xyz"],
                 sample_staining=_parse_channels(asset["sample_staining"]),
@@ -82,7 +82,7 @@ def load_manifest(path: Path) -> DatasetManifest:
             for row in reader:
                 dataset_id = row["dataset_id"]
                 asset = ImageAsset(
-                    source_ims=Path(row["source_ims"]).expanduser(),
+                    spim_path=Path(row["spim_path"]).expanduser(),
                     entities=_entities_from_row(row),
                     orientation_string_xyz=row["orientation_string_xyz"],
                     sample_staining=_parse_channels(row["sample_staining"]),

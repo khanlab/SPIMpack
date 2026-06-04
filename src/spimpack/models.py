@@ -11,7 +11,7 @@ REQUIRED_DATASET_DESCRIPTION_FIELDS = ("Name", "BIDSVersion", "DatasetType", "Li
 SIDECAR_ASSET_FIELDS = ("orientation_string_xyz", "sample_staining")
 
 #: TSV columns that are required and map to ImageAsset / dataset fields (not entities, not sidecar).
-REQUIRED_CORE_TSV_COLUMNS = ("dataset_id", "source_ims", "orientation_string_xyz", "sample_staining")
+REQUIRED_CORE_TSV_COLUMNS = ("dataset_id", "spim_path", "orientation_string_xyz", "sample_staining")
 
 #: Path pattern used by pybids build_path for BIDS microscopy assets.
 BIDS_MICR_PATTERN = (
@@ -52,7 +52,7 @@ class BidsEntities:
 class ImageAsset:
     """A source microscopy image and its required sidecar metadata."""
 
-    source_ims: Path
+    spim_path: Path
     entities: BidsEntities
     orientation_string_xyz: str
     sample_staining: list[str]

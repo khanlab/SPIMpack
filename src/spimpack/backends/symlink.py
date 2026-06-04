@@ -52,7 +52,7 @@ class SymlinkWriter:
                 if link_path.exists() or link_path.is_symlink():
                     link_path.unlink()
 
-                target = asset.source_ims.resolve()
+                target = asset.spim_path.resolve()
                 if self.relative_symlinks:
                     target = Path(os.path.relpath(target, link_path.parent.resolve()))
                 link_path.symlink_to(target)
