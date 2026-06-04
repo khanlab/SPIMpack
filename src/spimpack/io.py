@@ -31,7 +31,7 @@ def _entities_from_row(row: dict[str, str]) -> BidsEntities:
     return BidsEntities(
         subject=row["subject"],
         sample=row["sample"],
-        session=row.get("sesssion") or None,
+        session=row.get("session") or None,
         acquisition=row.get("acquisition") or None,
     )
 
