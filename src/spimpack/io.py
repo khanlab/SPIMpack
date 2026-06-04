@@ -116,6 +116,6 @@ def _parse_row_metadata(row: dict[str, str], fieldnames: list[str]) -> dict[str,
         value = row.get(key)
         if key in skip or value in (None, ""):
             continue
-        if key[0].isupper():
+        if key and key[0].isupper():
             metadata[key] = value
     return metadata
