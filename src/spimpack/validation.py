@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from .models import (
     REQUIRED_DATASET_DESCRIPTION_FIELDS,
-    REQUIRED_SIDECAR_FIELDS,
+    SIDECAR_ASSET_FIELDS,
     BidsEntities,
     DatasetManifest,
 )
@@ -70,17 +69,17 @@ def validate_manifest(manifest: DatasetManifest) -> None:
         dataset_ids.add(dataset.dataset_id)
 
         for asset in dataset.assets:
-            if not asset.spim_path:
+            if not asset.source_ims:
                 raise ValidationError(
-                    f"dataset {dataset.dataset_id} has asset missing spim_path"
+                    f"dataset {dataset.dataset_id} has asset missing source_ims"
                 )
-            if not asset.spim_path.exists():
-                raise ValidationError(f"spim_path does not exist: {asset.spim_path}")
+            if not asset.source_ims.exists():
+                raise ValidationError(f"source_ims does not exist: {asset.source_ims}")
 
             _validate_entities(asset.entities)
 
             missing_sidecar = []
-            for key in REQUIRED_SIDECAR_FIELDS:
+            for key in SIDECAR_ASSET_FIELDS:
                 value = getattr(asset, key)
                 if not value:
                     missing_sidecar.append(key)

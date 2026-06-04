@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from .base import BackendWriter
-from .symlink import SymlinkWriter
+from .imaris_symlink import LocalImarisSymlinkWriter
 
 
 def get_writer(name: str, *, relative_symlinks: bool = False) -> BackendWriter:
-    if name == SymlinkWriter.name:
-        return SymlinkWriter(relative_symlinks=relative_symlinks)
+    if name == LocalImarisSymlinkWriter.name:
+        return LocalImarisSymlinkWriter(relative_symlinks=relative_symlinks)
     raise ValueError(f"unsupported backend: {name}")
