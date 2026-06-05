@@ -15,6 +15,12 @@ dependencies = [
   "pybids>=0.16",
 ]
 
+[project.optional-dependencies]
+ui = [
+  "streamlit>=1.30",
+  "pandas>=1.5",
+]
+
 [project.scripts]
 spimpack = "spimpack.cli:main"
 
