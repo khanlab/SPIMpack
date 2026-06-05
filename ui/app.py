@@ -33,7 +33,7 @@ from generate import (  # noqa: E402
 # ---------------------------------------------------------------------------
 #: Predefined stain options available in each channel selectbox.
 _STAIN_OPTIONS: list[str] = [
-    "",
+    "— none —",
     "Abeta",
     "YoPro",
     "VACht",
@@ -73,7 +73,10 @@ def _browse_for_file() -> str | None:
         )
         root.destroy()
         return path or None
-    except Exception:
+    except (ImportError, OSError, RuntimeError):
+        # ImportError  – Tkinter not installed (some minimal Linux environments)
+        # OSError      – no display server available (headless/server)
+        # RuntimeError – Tcl/Tk initialisation failure
         return None
 
 
@@ -103,7 +106,8 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
                 help="Absolute path to the source microscopy file (.ims, .ome.zarr, .ozx, …)",
             )
         with browse_col:
-            # Vertical spacer aligns the button with the text input label row.
+            # A non-breaking space here provides the vertical gap that aligns
+            # the button with the text input's label row above it.
             st.write("\u00a0")
             if st.button("📂 Browse", key=f"browse_{scan_id}"):
                 selected = _browse_for_file()
@@ -116,11 +120,19 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
                         icon="ℹ️",
                     )
 
+        # Show a real-time existence hint.  The path comes from the user so we
+        # validate it is absolute before touching the filesystem (read-only).
         if spim_path:
-            if Path(spim_path).exists():
-                st.caption("✅ File found on filesystem")
-            else:
-                st.caption("⚠️ File not found at this path")
+            try:
+                p = Path(spim_path)
+                if not p.is_absolute():
+                    st.caption("⚠️ Please enter an absolute path")
+                elif p.exists():
+                    st.caption("✅ File found on filesystem")
+                else:
+                    st.caption("⚠️ File not found at this path")
+            except (OSError, ValueError):
+                st.caption("⚠️ Invalid path")
 
         # ---- Dataset ID & orientation ----------------------------------------
         c1, c2 = st.columns(2)
@@ -185,7 +197,7 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
                     )
                     if custom_val.strip():
                         staining_channels.append(custom_val.strip())
-                elif selected_stain:
+                elif selected_stain and selected_stain != "— none —":
                     staining_channels.append(selected_stain)
 
     return {
@@ -290,7 +302,7 @@ if to_remove is not None:
     st.session_state["scan_ids"].remove(to_remove)
     st.rerun()
 
-if st.button("➕ Add Scan", type="secondary"):
+if st.button("➕ Add Scan", key="add_scan", type="secondary"):
     st.session_state["scan_ids"].append(str(uuid.uuid4()))
     st.rerun()
 
