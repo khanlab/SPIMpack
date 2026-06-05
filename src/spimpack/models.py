@@ -6,12 +6,35 @@ from typing import Any
 
 
 REQUIRED_DATASET_DESCRIPTION_FIELDS = ("Name", "BIDSVersion", "DatasetType", "License")
-REQUIRED_SIDECAR_FIELDS = ("orientation_string_xyz", "sample_staining")
+
+#: Names of ImageAsset attributes that are written directly to the JSON sidecar.
+SIDECAR_ASSET_FIELDS = ("orientation_string_xyz", "sample_staining")
+
+#: TSV columns that are required and map to ImageAsset / dataset fields (not entities, not sidecar).
+REQUIRED_CORE_TSV_COLUMNS = ("dataset_id", "spim_path", "orientation_string_xyz", "sample_staining")
 
 #: Path pattern used by pybids build_path for BIDS microscopy assets.
 BIDS_MICR_PATTERN = (
     "sub-{subject}/[ses-{session}/]micr/"
     "sub-{subject}[_ses-{session}][_sample-{sample}][_acq-{acquisition}]_{suffix}{extension}"
+)
+
+
+@dataclass(frozen=True)
+class EntityDef:
+    """Definition of a BIDS entity used in filenames and TSV columns."""
+
+    long_name: str   # used in BidsEntities and pybids build_path
+    short_name: str  # used as TSV column header (e.g. 'sub', 'ses', 'acq')
+    required: bool
+
+
+#: Ordered BIDS entity definitions for SPIM microscopy data.
+BIDS_ENTITY_DEFS: tuple[EntityDef, ...] = (
+    EntityDef("subject", "sub", True),
+    EntityDef("sample", "sample", True),
+    EntityDef("session", "ses", False),
+    EntityDef("acquisition", "acq", False),
 )
 
 

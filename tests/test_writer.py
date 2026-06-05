@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from spimpack.backends.imaris_symlink import LocalImarisSymlinkWriter
+from spimpack.backends.symlink import SymlinkWriter
 from spimpack.models import BidsEntities, DatasetManifest, DatasetSpec, ImageAsset
 from spimpack.validation import validate_manifest
 
@@ -28,8 +28,8 @@ class WriterTests(unittest.TestCase):
                                 session="01",
                                 acquisition="4x1",
                             ),
-                            orientation="LPS",
-                            channel_labels=["nuclei", "membrane"],
+                            orientation_string_xyz="LPS",
+                            sample_staining=["nuclei", "membrane"],
                             metadata={"Magnification": "4x"},
                         )
                     ],
@@ -47,7 +47,7 @@ class WriterTests(unittest.TestCase):
             validate_manifest(manifest)
 
             out = root / "out"
-            LocalImarisSymlinkWriter().write(manifest, out)
+            SymlinkWriter().write(manifest, out)
 
             dd = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
             self.assertEqual(dd["Name"], "Demo")
@@ -60,8 +60,8 @@ class WriterTests(unittest.TestCase):
             self.assertTrue(link.is_symlink())
             self.assertTrue(link.resolve().is_file())
             data = json.loads(sidecar.read_text(encoding="utf-8"))
-            self.assertEqual(data["orientation"], "LPS")
-            self.assertEqual(data["channel_labels"], ["nuclei", "membrane"])
+            self.assertEqual(data["OrientationStringXYZ"], "LPS")
+            self.assertEqual(data["SampleStaining"], ["nuclei", "membrane"])
 
     def test_writer_creates_relative_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -70,7 +70,7 @@ class WriterTests(unittest.TestCase):
             source.write_text("ims", encoding="utf-8")
             manifest = self._manifest(source)
             out = root / "out"
-            LocalImarisSymlinkWriter(relative_symlinks=True).write(manifest, out)
+            SymlinkWriter(relative_symlinks=True).write(manifest, out)
 
             link = out / "sub-01/ses-01/micr/sub-01_ses-01_sample-s01_acq-4x1_SPIM.ims"
             self.assertFalse(str(link.readlink()).startswith("/"))
@@ -93,15 +93,15 @@ class WriterTests(unittest.TestCase):
                             ImageAsset(
                                 source_ims=source,
                                 entities=BidsEntities(subject="01", sample="s01"),
-                                orientation="LPS",
-                                channel_labels=["ch1"],
+                                orientation_string_xyz="LPS",
+                                sample_staining=["ch1"],
                             )
                         ],
                     )
                 ],
             )
             out = root / "out"
-            LocalImarisSymlinkWriter().write(manifest, out)
+            SymlinkWriter().write(manifest, out)
             dd = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
             spimpack_entries = [e for e in dd["GeneratedBy"] if e.get("Name") == "SPIMpack"]
             self.assertEqual(len(spimpack_entries), 1)

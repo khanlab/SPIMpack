@@ -6,18 +6,22 @@ from typing import Any
 
 import yaml
 
-from .models import BidsEntities, DatasetManifest, DatasetSpec, ImageAsset
-
-
-REQUIRED_TSV_COLUMNS = (
-    "dataset_id",
-    "subject",
-    "sample",
-    "spim_path",
-    "orientation_string_xyz",
-    "sample_staining",
+from .models import (
+    BIDS_ENTITY_DEFS,
+    REQUIRED_CORE_TSV_COLUMNS,
+    BidsEntities,
+    DatasetManifest,
+    DatasetSpec,
+    ImageAsset,
 )
-OPTIONAL_TSV_ENTITY_COLUMNS = ("session", "acquisition")
+
+
+# Derive column sets from the single source of truth in models.py
+_REQUIRED_ENTITY_COLUMNS = tuple(ed.short_name for ed in BIDS_ENTITY_DEFS if ed.required)
+_OPTIONAL_ENTITY_COLUMNS = tuple(ed.short_name for ed in BIDS_ENTITY_DEFS if not ed.required)
+_ALL_ENTITY_SHORT_NAMES = frozenset(ed.short_name for ed in BIDS_ENTITY_DEFS)
+
+REQUIRED_TSV_COLUMNS = _REQUIRED_ENTITY_COLUMNS + REQUIRED_CORE_TSV_COLUMNS
 
 
 def _parse_channels(raw: str | list[str]) -> list[str]:
@@ -28,21 +32,19 @@ def _parse_channels(raw: str | list[str]) -> list[str]:
 
 
 def _entities_from_row(row: dict[str, str]) -> BidsEntities:
-    return BidsEntities(
-        subject=row["subject"],
-        sample=row["sample"],
-        session=row.get("session") or None,
-        acquisition=row.get("acquisition") or None,
-    )
+    """Build BidsEntities from a TSV row using short entity column names."""
+    kwargs: dict[str, str | None] = {}
+    for ed in BIDS_ENTITY_DEFS:
+        kwargs[ed.long_name] = row.get(ed.short_name) or None
+    return BidsEntities(**kwargs)  # type: ignore[arg-type]
 
 
 def _entities_from_dict(asset: dict[str, Any]) -> BidsEntities:
-    return BidsEntities(
-        subject=asset["subject"],
-        sample=asset["sample"],
-        session=asset.get("session") or None,
-        acquisition=asset.get("acquisition") or None,
-    )
+    """Build BidsEntities from a YAML asset dict using long entity names."""
+    kwargs: dict[str, str | None] = {}
+    for ed in BIDS_ENTITY_DEFS:
+        kwargs[ed.long_name] = asset.get(ed.long_name) or None
+    return BidsEntities(**kwargs)  # type: ignore[arg-type]
 
 
 def load_manifest(path: Path) -> DatasetManifest:
@@ -102,11 +104,18 @@ def load_manifest(path: Path) -> DatasetManifest:
 
 
 def _parse_row_metadata(row: dict[str, str], fieldnames: list[str]) -> dict[str, Any]:
-    skip = set(REQUIRED_TSV_COLUMNS) | set(OPTIONAL_TSV_ENTITY_COLUMNS)
+    """Extract sidecar metadata from a TSV row.
+
+    Columns that are BIDS entity short names or core required columns are skipped.
+    Remaining columns whose names start with an uppercase letter (PascalCase) are
+    treated as JSON sidecar metadata and preserved as-is.
+    """
+    skip = _ALL_ENTITY_SHORT_NAMES | set(REQUIRED_CORE_TSV_COLUMNS)
     metadata: dict[str, Any] = {}
     for key in fieldnames:
         value = row.get(key)
         if key in skip or value in (None, ""):
             continue
-        metadata[key] = value
+        if key and key[0].isupper():
+            metadata[key] = value
     return metadata

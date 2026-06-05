@@ -8,7 +8,7 @@ from pathlib import Path
 from bids.layout.writing import build_path
 
 from spimpack import __version__
-from spimpack.models import BIDS_MICR_PATTERN, DatasetManifest
+from spimpack.models import BIDS_ENTITY_DEFS, BIDS_MICR_PATTERN, DatasetManifest
 
 _SPIMPACK_GENERATED_BY = {
     "Name": "SPIMpack",
@@ -35,16 +35,14 @@ class SymlinkWriter:
 
         for dataset in manifest.datasets:
             for asset in dataset.assets:
-                bids_entities = {
-                    "subject": asset.entities.subject,
-                    "sample": asset.entities.sample,
-                    "suffix": "SPIM",
-                    "extension": ".ims",
+                # Build entity dict for pybids path builder using BIDS_ENTITY_DEFS
+                bids_entities: dict[str, str] = {
+                    ed.long_name: getattr(asset.entities, ed.long_name)
+                    for ed in BIDS_ENTITY_DEFS
+                    if getattr(asset.entities, ed.long_name)
                 }
-                if asset.entities.session:
-                    bids_entities["session"] = asset.entities.session
-                if asset.entities.acquisition:
-                    bids_entities["acquisition"] = asset.entities.acquisition
+                bids_entities["suffix"] = "SPIM"
+                bids_entities["extension"] = ".ims"
 
                 rel_path = build_path(bids_entities, [BIDS_MICR_PATTERN])
                 link_path = output_dir / rel_path

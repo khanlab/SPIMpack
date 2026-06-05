@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from .models import (
     REQUIRED_DATASET_DESCRIPTION_FIELDS,
-    REQUIRED_SIDECAR_FIELDS,
+    SIDECAR_ASSET_FIELDS,
     BidsEntities,
     DatasetManifest,
 )
@@ -80,7 +79,7 @@ def validate_manifest(manifest: DatasetManifest) -> None:
             _validate_entities(asset.entities)
 
             missing_sidecar = []
-            for key in REQUIRED_SIDECAR_FIELDS:
+            for key in SIDECAR_ASSET_FIELDS:
                 value = getattr(asset, key)
                 if not value:
                     missing_sidecar.append(key)
