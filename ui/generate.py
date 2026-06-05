@@ -115,7 +115,9 @@ def generate_manifest_yaml(
     """
     manifest: dict[str, Any] = {
         "dataset_description": {
-            k: v for k, v in dataset_description.items() if v not in (None, "", [])
+            k: v
+            for k, v in dataset_description.items()
+            if v is not None and v != "" and v != []
         },
         "datasets_tsv": tsv_filename,
     }

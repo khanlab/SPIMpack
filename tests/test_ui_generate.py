@@ -163,7 +163,7 @@ class TestGenerateTsv(unittest.TestCase):
 
     def test_empty_rows_produces_header_only(self):
         tsv = generate_tsv([])
-        lines = [l for l in tsv.splitlines() if l]
+        lines = [line for line in tsv.splitlines() if line]
         self.assertEqual(len(lines), 1)
 
     def test_multiple_rows(self):

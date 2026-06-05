@@ -120,6 +120,10 @@ Or, when working from a clone:
 pip install -e ".[ui]"
 ```
 
+> **Python version note:** Streamlit requires Python ≥ 3.9 (matching the core
+> package requirement) and Pandas ≥ 1.5.  Both are available on Windows, macOS,
+> and Linux.
+
 ### Running the UI
 
 ```bash

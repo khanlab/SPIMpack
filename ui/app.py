@@ -12,6 +12,8 @@ import pandas as pd
 import streamlit as st
 
 # Allow running directly from the repo root without installing the package.
+# When streamlit executes `streamlit run ui/app.py`, the working directory is
+# typically the repo root and the package may not be on PYTHONPATH yet.
 _ui_dir = Path(__file__).parent
 _repo_root = _ui_dir.parent
 if str(_repo_root / "src") not in sys.path:
