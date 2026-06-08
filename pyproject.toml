@@ -10,16 +10,6 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {file = "LICENSE"}
 authors = [{name = "Khan Lab"}]
-dependencies = [
-  "PyYAML>=6.0",
-  "pybids>=0.16",
-]
-
-[project.optional-dependencies]
-ui = [
-  "streamlit>=1.30",
-  "pandas>=1.5",
-]
 
 [project.scripts]
 spimpack = "spimpack.cli:main"
@@ -29,3 +19,22 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+spimpack = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+
+[tool.pixi.tasks]
+
+[tool.pixi.dependencies]
+tk = ">=8.6.13,<9"
+pyyaml = ">=6.0.3,<7"
+pybids = ">=0.22.0,<0.23"
+streamlit = ">=1.58.0,<2"
+pandas = ">=3.0.3,<4"

@@ -79,14 +79,17 @@ def _browse_for_file() -> str | None:
         # RuntimeError – Tcl/Tk initialisation failure
         return None
 
-
 def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
-    """Render all widgets for one scan entry and return its current field values.
+    """Render all widgets for one scan entry and return its current field values."""
 
-    The returned dict contains two internal keys:
-    - ``_scan_id``: the unique ID of this entry (for removal tracking)
-    - ``_remove``: True if the user clicked the Remove button this cycle
-    """
+    spim_key = f"spim_{scan_id}"
+    browse_trigger_key = f"browse_trigger_{scan_id}"
+
+    # ---- Handle Browse-triggered selection BEFORE creating text_input ----
+    if browse_trigger_key in st.session_state:
+        st.session_state[spim_key] = st.session_state.pop(browse_trigger_key)
+        st.rerun()
+
     with st.container(border=True):
         hdr_col, rm_col = st.columns([10, 1])
         with hdr_col:
@@ -101,18 +104,17 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
         with path_col:
             spim_path: str = st.text_input(
                 "SPIM file path *",
-                key=f"spim_{scan_id}",
+                key=spim_key,
                 placeholder="/data/raw/sub01.ims",
                 help="Absolute path to the source microscopy file (.ims, .ome.zarr, .ozx, …)",
             )
         with browse_col:
-            # A non-breaking space here provides the vertical gap that aligns
-            # the button with the text input's label row above it.
             st.write("\u00a0")
             if st.button("📂 Browse", key=f"browse_{scan_id}"):
                 selected = _browse_for_file()
                 if selected:
-                    st.session_state[f"spim_{scan_id}"] = selected
+                    # Set a temporary trigger instead of overwriting the widget key
+                    st.session_state[browse_trigger_key] = selected
                     st.rerun()
                 else:
                     st.toast(
@@ -120,8 +122,7 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
                         icon="ℹ️",
                     )
 
-        # Show a real-time existence hint.  The path comes from the user so we
-        # validate it is absolute before touching the filesystem (read-only).
+        # ---- Validate file existence ----------------------------------------
         if spim_path:
             try:
                 p = Path(spim_path)
