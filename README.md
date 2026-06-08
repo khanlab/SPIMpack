@@ -101,6 +101,58 @@ spimpack package \
 
 Symlinks are absolute by default. Use `--relative-symlinks` to create relative symlinks.
 
+## Interactive UI
+
+SPIMpack ships with an optional Streamlit-based web UI that lets you define
+manifests and datasets tables without editing YAML or TSV files by hand.
+
+### Installation
+
+Install SPIMpack with the `ui` extra to pull in Streamlit and Pandas:
+
+```bash
+pip install "spimpack[ui]"
+```
+
+Or, when working from a clone:
+
+```bash
+pip install -e ".[ui]"
+```
+
+> **Python version note:** Streamlit requires Python ≥ 3.9 (matching the core
+> package requirement) and Pandas ≥ 1.5.  Both are available on Windows, macOS,
+> and Linux.
+
+### Running the UI
+
+```bash
+streamlit run ui/app.py
+```
+
+A browser window opens automatically.  You can also navigate to
+`http://localhost:8501` manually.
+
+### Workflow
+
+1. **Dataset Description** – fill in the form fields (name, BIDS version,
+   dataset type, license, authors).
+2. **Datasets Table** – use the interactive table to add one row per imaging
+   acquisition.  Required columns are marked with `*`; optional BIDS entity
+   columns (`ses`, `acq`) can be left blank.  Extra PascalCase columns are
+   written to the sidecar JSON.
+3. **Validate & Download** – any validation errors are shown inline.  Once the
+   form is valid, download `manifest.yml` and `datasets.tsv` with the provided
+   buttons.
+4. Run the CLI as usual:
+
+```bash
+spimpack package \
+  --manifest manifest.yml \
+  --output-dir /path/to/output \
+  --backend symlink
+```
+
 ## Future backend model
 
 The package separates shared models/validation from writer backends so future writers can be added without major restructuring, e.g.:
