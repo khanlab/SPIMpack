@@ -421,7 +421,7 @@ if manifest_save_path and output_dir_path:
 
 run_disabled = bool(errors) or not manifest_save_path or not output_dir_path
 
-if run_disabled and not errors and (not manifest_save_path or not output_dir_path):
+if not errors and (not manifest_save_path or not output_dir_path):
     st.caption("⚠️ Provide a manifest save path and output directory to enable this button.")
 
 if st.button(
