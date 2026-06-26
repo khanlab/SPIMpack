@@ -31,6 +31,7 @@ spimpack = { path = ".", editable = true }
 default = { solve-group = "default" }
 
 [tool.pixi.tasks]
+spimpack-ui = { cmd = ["streamlit", "run", "ui/app.py"], description = "Run SPIMpack browser-based UI." }
 
 [tool.pixi.dependencies]
 tk = ">=8.6.13,<9"
