@@ -92,7 +92,7 @@ Before writing, SPIMpack validates:
 ## CLI
 
 ```bash
-spimpack package \
+pixi run spimpack package \
   --manifest /path/to/manifest.yml \
   --output-dir /path/to/output \
   --backend symlink \
@@ -106,28 +106,10 @@ Symlinks are absolute by default. Use `--relative-symlinks` to create relative s
 SPIMpack ships with an optional Streamlit-based web UI that lets you define
 manifests and datasets tables without editing YAML or TSV files by hand.
 
-### Installation
-
-Install SPIMpack with the `ui` extra to pull in Streamlit and Pandas:
-
-```bash
-pip install "spimpack[ui]"
-```
-
-Or, when working from a clone:
-
-```bash
-pip install -e ".[ui]"
-```
-
-> **Python version note:** Streamlit requires Python ≥ 3.9 (matching the core
-> package requirement) and Pandas ≥ 1.5.  Both are available on Windows, macOS,
-> and Linux.
-
 ### Running the UI
 
 ```bash
-streamlit run ui/app.py
+pixi run spimpack-ui
 ```
 
 A browser window opens automatically.  You can also navigate to
@@ -147,7 +129,7 @@ A browser window opens automatically.  You can also navigate to
 4. Run the CLI as usual:
 
 ```bash
-spimpack package \
+pixi run spimpack package \
   --manifest manifest.yml \
   --output-dir /path/to/output \
   --backend symlink
