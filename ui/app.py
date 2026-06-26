@@ -5,6 +5,8 @@ Run with:
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import uuid
 from pathlib import Path
@@ -27,6 +29,8 @@ from generate import (  # noqa: E402
     generate_tsv,
     validate_form,
 )
+from spimpack.cli import run_package  # noqa: E402
+from spimpack.validation import ValidationError  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -364,4 +368,96 @@ with st.expander("Preview manifest.yml", expanded=False):
 
 with st.expander("Preview datasets.tsv", expanded=False):
     st.code(tsv_content)
+
+# ---------------------------------------------------------------------------
+# Section 4 – Run spimpack package
+# ---------------------------------------------------------------------------
+st.header("4. Run spimpack package")
+st.caption(
+    "Save the generated files to disk and invoke `spimpack package` directly. "
+    "The manifest and TSV are written to the paths you specify below before the "
+    "command is executed."
+)
+
+run_col1, run_col2 = st.columns(2)
+with run_col1:
+    manifest_save_path = st.text_input(
+        "Manifest save path *",
+        placeholder="/data/project/manifest.yml",
+        help="Absolute path where manifest.yml will be written before running spimpack.",
+    )
+with run_col2:
+    output_dir_path = st.text_input(
+        "Output directory *",
+        placeholder="/data/bids_output",
+        help="Directory where spimpack will write the packaged BIDS dataset.",
+    )
+
+opt_col1, opt_col2 = st.columns(2)
+with opt_col1:
+    run_backend = st.selectbox(
+        "Backend",
+        options=["symlink"],
+        help="Backend writer to use for packaging.",
+    )
+with opt_col2:
+    run_relative_symlinks = st.checkbox(
+        "Relative symlinks",
+        value=False,
+        help="Create relative symlinks instead of absolute symlinks (symlink backend only).",
+    )
+
+# Show a preview of the command that will be executed.
+if manifest_save_path and output_dir_path:
+    cmd_parts = [
+        "spimpack", "package",
+        "--manifest", manifest_save_path,
+        "--output-dir", output_dir_path,
+        "--backend", run_backend,
+    ]
+    if run_relative_symlinks:
+        cmd_parts.append("--relative-symlinks")
+    st.code(" ".join(cmd_parts), language="bash")
+
+run_disabled = bool(errors) or not manifest_save_path or not output_dir_path
+
+if not errors and (not manifest_save_path or not output_dir_path):
+    st.caption("⚠️ Provide a manifest save path and output directory to enable this button.")
+
+if st.button(
+    "💾 Save Files & ▶️ Run spimpack package",
+    key="run_spimpack",
+    disabled=run_disabled,
+    type="primary",
+):
+    manifest_path_obj = Path(manifest_save_path)
+    tsv_path_obj = manifest_path_obj.parent / tsv_filename
+    # Save files to disk.
+    try:
+        manifest_path_obj.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path_obj.write_text(manifest_yaml, encoding="utf-8")
+        tsv_path_obj.write_text(tsv_content, encoding="utf-8")
+        st.info(f"Saved `{manifest_path_obj}` and `{tsv_path_obj}`")
+    except OSError as exc:
+        st.error(f"❌ Failed to save files: {exc}")
+    else:
+        # Invoke spimpack package, capturing printed output.
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                run_package(
+                    manifest_path=manifest_path_obj,
+                    output_dir=Path(output_dir_path),
+                    backend=run_backend,
+                    relative_symlinks=run_relative_symlinks,
+                )
+        except (ValidationError, ValueError, FileNotFoundError) as exc:
+            st.error(f"❌ spimpack package failed: {exc}")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"❌ Unexpected error: {exc}")
+        else:
+            st.success("✅ spimpack package completed successfully.")
+        captured = buf.getvalue()
+        if captured:
+            st.code(captured)
 
