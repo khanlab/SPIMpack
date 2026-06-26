@@ -75,7 +75,7 @@ Any additional columns are written into the sidecar JSON.
 
 ```tsv
 dataset_id	subject	session	sample	acquisition	spim_path	orientation_string_xyz	sample_staining	Species
-cohort1	01	01	s01	4x1	/data/raw/sub01.ims	LPS	nuclei;membrane	mouse
+cohort1	01	01	s01	4x1	/data/raw/sub01.ims	RPI	Abeta;YoPro;CD31	mouse
 ```
 
 ## Validation
