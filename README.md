@@ -66,7 +66,7 @@ Optional:
 
 | Column                   | Description                              |
 |--------------------------|------------------------------------------|
-| `participant_id`         | Deprecated compatibility alias for participant linkage; use `subject` as the canonical participant key |
+| `participant_id`         | Deprecated compatibility alias for participant linkage; use `sub` as the canonical participant key |
 
 Optional (entity columns):
 
@@ -80,7 +80,7 @@ Any additional columns are written into the sidecar JSON.
 ### Example TSV
 
 ```tsv
-subject	session	sample	acquisition	spim_path	orientation_string_xyz	sample_staining	Species
+sub	ses	sample	acq	spim_path	orientation_string_xyz	sample_staining	Species
 01	01	s01	4x1	/data/raw/sub01.ims	RPI	Abeta;YoPro;CD31	mouse
 ```
 
@@ -93,7 +93,7 @@ participant_id	sex	age	genotype
 sub-01	F	10	wt
 ```
 
-When `participants.tsv` is present, each `scans.tsv` row must reference a known participant via `subject`. The legacy `participant_id` column is optional.
+When `participants.tsv` is present, each `scans.tsv` row must reference a known participant via `sub`. The legacy `participant_id` column is optional.
 
 ### Deprecations and migration
 
