@@ -139,21 +139,13 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
             except (OSError, ValueError):
                 st.caption("⚠️ Invalid path")
 
-        # ---- Participant ID & orientation -------------------------------------
-        c1, c2 = st.columns(2)
-        with c1:
-            participant_id: str = st.text_input(
-                "Participant ID (optional)",
-                key=f"participant_id_{scan_id}",
-                help="Optional BIDS participant_id (e.g. sub-01)",
-            )
-        with c2:
-            orientation: str = st.text_input(
-                "Orientation XYZ *",
-                key=f"orient_{scan_id}",
-                placeholder="LPS",
-                help="Image orientation string, e.g. LPS",
-            )
+        # ---- Orientation -------------------------------------------------------
+        orientation: str = st.text_input(
+            "Orientation XYZ *",
+            key=f"orient_{scan_id}",
+            placeholder="LPS",
+            help="Image orientation string, e.g. LPS",
+        )
 
         # ---- BIDS entities ---------------------------------------------------
         e1, e2, e3, e4 = st.columns(4)
@@ -208,7 +200,6 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
     return {
         "_scan_id": scan_id,
         "_remove": remove_clicked,
-        "participant_id": participant_id,
         "sub": sub,
         "sample": sample,
         "ses": ses,

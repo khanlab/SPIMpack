@@ -101,8 +101,8 @@ class IoTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / "scans.tsv").write_text(
-                "participant_id\tsub\tsample\tspim_path\torientation_string_xyz\tsample_staining\n"
-                f"sub-01\t01\ts01\t{source}\tLPS\tc1\n",
+                "sub\tsample\tspim_path\torientation_string_xyz\tsample_staining\n"
+                f"01\ts01\t{source}\tLPS\tc1\n",
                 encoding="utf-8",
             )
             manifest_path = root / "manifest.yml"

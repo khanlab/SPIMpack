@@ -33,8 +33,7 @@ REQUIRED_TSV_COLUMNS: tuple[str, ...] = _REQUIRED_ENTITY_COLUMNS + REQUIRED_CORE
 
 #: Default column order used when creating an empty table or writing a new TSV.
 DEFAULT_TSV_COLUMNS: tuple[str, ...] = (
-    ("participant_id",)
-    + _REQUIRED_ENTITY_COLUMNS
+    _REQUIRED_ENTITY_COLUMNS
     + _OPTIONAL_ENTITY_COLUMNS
     + ("spim_path", "orientation_string_xyz", "sample_staining")
 )

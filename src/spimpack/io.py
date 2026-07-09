@@ -160,29 +160,27 @@ def _load_scan_assets(
         participant_map = {
             participant_label_from_id(p.participant_id): p for p in participants
         }
-        if participant_map and "participant_id" not in fieldnames:
-            raise ValueError(
-                "participants.tsv is present, so scans.tsv must include participant_id."
-            )
 
         scan_assets: list[ImageAsset] = []
         for scan_row in reader:
             if participant_map:
-                participant_id = (scan_row.get("participant_id") or "").strip()
-                if not participant_id:
-                    raise ValueError(
-                        "participant_id is required in scans.tsv when participants.tsv is used."
-                    )
-                participant_label = participant_label_from_id(participant_id)
-                if participant_label not in participant_map:
-                    raise ValueError(
-                        f"scan references unknown participant_id: {participant_id}"
-                    )
                 scan_subject = (scan_row.get("sub") or "").strip()
-                if scan_subject and scan_subject != participant_label:
+                if scan_subject not in participant_map:
                     raise ValueError(
-                        "scan sub and participant_id must refer to the same participant."
+                        f"scan subject sub-{scan_subject} is not listed in participants.tsv"
                     )
+
+                participant_id = (scan_row.get("participant_id") or "").strip()
+                if participant_id:
+                    participant_label = participant_label_from_id(participant_id)
+                    if participant_label not in participant_map:
+                        raise ValueError(
+                            f"scan references unknown participant_id: {participant_id}"
+                        )
+                    if scan_subject and scan_subject != participant_label:
+                        raise ValueError(
+                            "scan sub and participant_id must refer to the same participant."
+                        )
 
             scan_assets.append(
                 ImageAsset(

@@ -193,7 +193,6 @@ class CliTests(unittest.TestCase):
             (root / "scans.tsv").write_text(
                 "\t".join(
                     [
-                        "participant_id",
                         "sub",
                         "sample",
                         "spim_path",
@@ -202,7 +201,7 @@ class CliTests(unittest.TestCase):
                     ]
                 )
                 + "\n"
-                + "\t".join(["sub-01", "01", "s01", str(source), "LPS", "c1"])
+                + "\t".join(["01", "s01", str(source), "LPS", "c1"])
                 + "\n",
                 encoding="utf-8",
             )
