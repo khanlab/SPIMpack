@@ -143,7 +143,7 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
         c1, c2 = st.columns(2)
         with c1:
             participant_id: str = st.text_input(
-                "Participant ID",
+                "Participant ID (optional)",
                 key=f"participant_id_{scan_id}",
                 help="Optional BIDS participant_id (e.g. sub-01)",
             )

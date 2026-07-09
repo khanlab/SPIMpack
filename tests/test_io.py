@@ -1,3 +1,4 @@
+"""Tests for manifest IO loading, deprecations, and participants/scans TSV parsing."""
 from __future__ import annotations
 
 import tempfile

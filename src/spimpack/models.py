@@ -20,6 +20,20 @@ BIDS_MICR_PATTERN = (
 )
 
 
+def participant_id_with_prefix(participant_id: str) -> str:
+    normalized = participant_id.strip()
+    if normalized.startswith("sub-"):
+        return normalized
+    return f"sub-{normalized}"
+
+
+def participant_label_from_id(participant_id: str) -> str:
+    normalized = participant_id.strip()
+    if normalized.startswith("sub-"):
+        return normalized[4:]
+    return normalized
+
+
 @dataclass(frozen=True)
 class EntityDef:
     """Definition of a BIDS entity used in filenames and TSV columns."""

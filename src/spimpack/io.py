@@ -15,6 +15,8 @@ from .models import (
     DatasetSpec,
     ImageAsset,
     ParticipantSpec,
+    participant_id_with_prefix,
+    participant_label_from_id,
 )
 
 
@@ -156,7 +158,7 @@ def _load_scan_assets(
             )
 
         participant_map = {
-            _participant_label_from_id(p.participant_id): p for p in participants
+            participant_label_from_id(p.participant_id): p for p in participants
         }
         if participant_map and "participant_id" not in fieldnames:
             raise ValueError(
@@ -171,7 +173,7 @@ def _load_scan_assets(
                     raise ValueError(
                         "participant_id is required in scans.tsv when participants.tsv is used."
                     )
-                participant_label = _participant_label_from_id(participant_id)
+                participant_label = participant_label_from_id(participant_id)
                 if participant_label not in participant_map:
                     raise ValueError(
                         f"scan references unknown participant_id: {participant_id}"
@@ -219,7 +221,7 @@ def _load_participants(manifest_path: Path, raw_manifest: dict[str, Any]) -> lis
             participant_id = (participant_row.get("participant_id") or "").strip()
             if not participant_id:
                 raise ValueError("participants.tsv row is missing participant_id")
-            normalized_id = _participant_id_with_prefix(participant_id)
+            normalized_id = participant_id_with_prefix(participant_id)
             if normalized_id in participant_ids:
                 raise ValueError(f"duplicate participant_id in participants.tsv: {participant_id}")
             participant_ids.add(normalized_id)
@@ -233,20 +235,6 @@ def _load_participants(manifest_path: Path, raw_manifest: dict[str, Any]) -> lis
                 ParticipantSpec(participant_id=normalized_id, metadata=metadata)
             )
         return participants
-
-
-def _participant_id_with_prefix(participant_id: str) -> str:
-    normalized = participant_id.strip()
-    if normalized.startswith("sub-"):
-        return normalized
-    return f"sub-{normalized}"
-
-
-def _participant_label_from_id(participant_id: str) -> str:
-    normalized = participant_id.strip()
-    if normalized.startswith("sub-"):
-        return normalized[4:]
-    return normalized
 
 
 def _resolve_manifest_table_path(

@@ -7,6 +7,7 @@ from .models import (
     SIDECAR_ASSET_FIELDS,
     BidsEntities,
     DatasetManifest,
+    participant_label_from_id,
 )
 
 _BIDS_LABEL_RE = re.compile(r"^[A-Za-z0-9]+$")
@@ -32,12 +33,6 @@ def _validate_entities(entities: BidsEntities) -> None:
         _validate_bids_label(entities.session, "session (ses)")
     if entities.acquisition is not None:
         _validate_bids_label(entities.acquisition, "acquisition (acq)")
-
-
-def _participant_label_from_id(participant_id: str) -> str:
-    if participant_id.startswith("sub-"):
-        return participant_id[4:]
-    return participant_id
 
 
 def validate_manifest(manifest: DatasetManifest) -> None:
@@ -67,7 +62,7 @@ def validate_manifest(manifest: DatasetManifest) -> None:
         raise ValidationError("dataset_description.RequiredMicroscopyFields must be a list")
 
     participant_labels = {
-        _participant_label_from_id(participant.participant_id)
+        participant_label_from_id(participant.participant_id)
         for participant in manifest.participants
     }
     for label in participant_labels:
