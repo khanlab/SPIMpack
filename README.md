@@ -92,7 +92,7 @@ Before writing, SPIMpack validates:
 ## CLI
 
 ```bash
-pixi run spimpack package \
+spimpack package \
   --manifest /path/to/manifest.yml \
   --output-dir /path/to/output \
   --backend symlink \
