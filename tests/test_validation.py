@@ -127,5 +127,6 @@ class ValidationTests(unittest.TestCase):
                 datasets=[DatasetSpec(dataset_id="d1", assets=[_valid_asset(ims)])],
                 participants=[ParticipantSpec(participant_id="sub-02")],
             )
-            with self.assertRaises(ValidationError):
+            with self.assertRaises(ValidationError) as ctx:
                 validate_manifest(manifest)
+            self.assertIn("sub-01", str(ctx.exception))

@@ -66,6 +66,7 @@ class CliTests(unittest.TestCase):
             )
             self.assertEqual(rc, 0)
 
+            # Path should be BIDS: sub-01/ses-01/micr/sub-01_ses-01_sample-s01_acq-4x1_SPIM.json
             sidecar = json.loads(
                 (out / "sub-01/ses-01/micr/sub-01_ses-01_sample-s01_acq-4x1_SPIM.json").read_text(
                     encoding="utf-8"
