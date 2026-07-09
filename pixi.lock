@@ -2442,7 +2442,7 @@ packages:
 - pypi: ./
   name: spimpack
   version: 0.1.0
-  sha256: 71de635d74f6306c38207558f0612a2ade366ac6199ee01d908997f00706a2c7
+  sha256: 5453047092efa73ba5e28819528abb3121e04a9cd7220998a0981486defd1eae
   requires_python: '>=3.9'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/sqlalchemy-2.0.50-py314h0f05182_0.conda
   sha256: 57c698bad968c4d38fa30cc956cfcd986ffb2145a27532df55c96d731a54cbe9
