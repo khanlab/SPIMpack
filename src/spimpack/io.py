@@ -102,14 +102,14 @@ def _resolve_scans_tsv(manifest_path: Path, raw_manifest: dict[str, Any]) -> Pat
             stacklevel=3,
         )
     if scans_tsv:
-        return (manifest_path.parent / scans_tsv).resolve()
+        return _resolve_manifest_table_path(manifest_path, scans_tsv, "scans_tsv")
     if datasets_tsv:
         warnings.warn(
             "datasets_tsv is deprecated; rename to scans_tsv and use scans.tsv.",
             DeprecationWarning,
             stacklevel=3,
         )
-        return (manifest_path.parent / datasets_tsv).resolve()
+        return _resolve_manifest_table_path(manifest_path, datasets_tsv, "datasets_tsv")
 
     scans_default = manifest_path.parent / "scans.tsv"
     datasets_default = manifest_path.parent / "datasets.tsv"
@@ -176,7 +176,8 @@ def _load_scan_assets(
                     raise ValueError(
                         f"scan references unknown participant_id: {participant_id}"
                     )
-                if scan_row.get("sub") and scan_row["sub"] != participant_label:
+                scan_subject = (scan_row.get("sub") or "").strip()
+                if scan_subject and scan_subject != participant_label:
                     raise ValueError(
                         "scan sub and participant_id must refer to the same participant."
                     )
@@ -197,7 +198,9 @@ def _load_scan_assets(
 def _load_participants(manifest_path: Path, raw_manifest: dict[str, Any]) -> list[ParticipantSpec]:
     participants_tsv = raw_manifest.get("participants_tsv")
     if participants_tsv:
-        participants_path = (manifest_path.parent / participants_tsv).resolve()
+        participants_path = _resolve_manifest_table_path(
+            manifest_path, participants_tsv, "participants_tsv"
+        )
     else:
         default_path = manifest_path.parent / "participants.tsv"
         if not default_path.exists():
@@ -244,6 +247,26 @@ def _participant_label_from_id(participant_id: str) -> str:
     if normalized.startswith("sub-"):
         return normalized[4:]
     return normalized
+
+
+def _resolve_manifest_table_path(
+    manifest_path: Path,
+    table_path: str,
+    manifest_key: str,
+) -> Path:
+    relative_path = Path(table_path)
+    if relative_path.is_absolute():
+        raise ValueError(f"{manifest_key} must be a relative path next to the manifest")
+
+    manifest_dir = manifest_path.parent.resolve()
+    resolved = (manifest_dir / relative_path).resolve()
+    try:
+        resolved.relative_to(manifest_dir)
+    except ValueError as exc:
+        raise ValueError(
+            f"{manifest_key} must resolve inside the manifest directory"
+        ) from exc
+    return resolved
 
 
 def _parse_row_metadata(row: dict[str, str], fieldnames: list[str]) -> dict[str, Any]:

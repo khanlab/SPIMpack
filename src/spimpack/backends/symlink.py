@@ -103,7 +103,7 @@ def _write_participants_tsv(manifest: DatasetManifest, output_dir: Path) -> None
             lineterminator="\n",
         )
         writer.writeheader()
-        for participant in sorted(manifest.participants, key=lambda item: item.participant_id):
+        for participant in sorted(manifest.participants, key=lambda p: p.participant_id):
             row = {"participant_id": participant.participant_id}
             for key in metadata_columns:
                 row[key] = participant.metadata.get(key, "")
