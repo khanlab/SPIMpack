@@ -24,7 +24,7 @@ _VALID_DD = {
 }
 
 _VALID_ROW = {
-    "dataset_id": "cohort1",
+    "participant_id": "sub-01",
     "sub": "01",
     "sample": "s01",
     "ses": "",
@@ -102,10 +102,10 @@ class TestValidateForm(unittest.TestCase):
 
 class TestGenerateManifestYaml(unittest.TestCase):
     def test_basic_output_contains_required_keys(self):
-        yaml_text = generate_manifest_yaml(_VALID_DD, "datasets.tsv")
+        yaml_text = generate_manifest_yaml(_VALID_DD, "scans.tsv")
         self.assertIn("dataset_description:", yaml_text)
-        self.assertIn("datasets_tsv:", yaml_text)
-        self.assertIn("datasets.tsv", yaml_text)
+        self.assertIn("scans_tsv:", yaml_text)
+        self.assertIn("scans.tsv", yaml_text)
 
     def test_name_present_in_output(self):
         yaml_text = generate_manifest_yaml(_VALID_DD)
@@ -132,7 +132,7 @@ class TestGenerateTsv(unittest.TestCase):
     def test_header_row_present(self):
         tsv = generate_tsv([_VALID_ROW])
         first_line = tsv.splitlines()[0]
-        self.assertIn("dataset_id", first_line)
+        self.assertIn("participant_id", first_line)
         self.assertIn("sub", first_line)
         self.assertIn("spim_path", first_line)
 
@@ -146,7 +146,7 @@ class TestGenerateTsv(unittest.TestCase):
         tsv = generate_tsv([_VALID_ROW])
         lines = tsv.splitlines()
         self.assertEqual(len(lines), 2)  # header + 1 data row
-        self.assertIn("cohort1", lines[1])
+        self.assertIn("sub-01", lines[1])
         self.assertIn("/data/raw/sub01.ims", lines[1])
 
     def test_extra_pascalcase_column_included(self):
@@ -167,7 +167,7 @@ class TestGenerateTsv(unittest.TestCase):
         self.assertEqual(len(lines), 1)
 
     def test_multiple_rows(self):
-        row2 = {**_VALID_ROW, "dataset_id": "cohort2", "sub": "02"}
+        row2 = {**_VALID_ROW, "participant_id": "sub-02", "sub": "02"}
         tsv = generate_tsv([_VALID_ROW, row2])
         lines = tsv.splitlines()
         self.assertEqual(len(lines), 3)

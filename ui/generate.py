@@ -1,4 +1,4 @@
-"""Pure-Python helpers for generating manifest YAML and datasets TSV content.
+"""Pure-Python helpers for generating manifest YAML and scans TSV content.
 
 These functions are decoupled from Streamlit so they can be tested independently.
 """
@@ -33,7 +33,7 @@ REQUIRED_TSV_COLUMNS: tuple[str, ...] = _REQUIRED_ENTITY_COLUMNS + REQUIRED_CORE
 
 #: Default column order used when creating an empty table or writing a new TSV.
 DEFAULT_TSV_COLUMNS: tuple[str, ...] = (
-    ("dataset_id",)
+    ("participant_id",)
     + _REQUIRED_ENTITY_COLUMNS
     + _OPTIONAL_ENTITY_COLUMNS
     + ("spim_path", "orientation_string_xyz", "sample_staining")
@@ -51,7 +51,7 @@ def validate_form(
     dataset_description:
         Mapping that will become the ``dataset_description`` block of the manifest.
     rows:
-        Non-empty rows from the datasets table (fully-blank rows should be
+        Non-empty rows from the scans table (fully-blank rows should be
         filtered out by the caller before passing here).
 
     Returns
@@ -80,7 +80,7 @@ def validate_form(
 
     # At least one row
     if not rows:
-        errors.append("At least one dataset row is required.")
+        errors.append("At least one scan row is required.")
 
     for i, row in enumerate(rows, start=1):
         # Required columns must be non-empty
@@ -102,7 +102,7 @@ def validate_form(
 
 def generate_manifest_yaml(
     dataset_description: dict[str, Any],
-    tsv_filename: str = "datasets.tsv",
+    tsv_filename: str = "scans.tsv",
 ) -> str:
     """Return YAML text for a ``manifest.yml`` file.
 
@@ -111,7 +111,7 @@ def generate_manifest_yaml(
     dataset_description:
         Mapping that becomes the ``dataset_description`` block.
     tsv_filename:
-        Relative filename reference written as ``datasets_tsv``.
+        Relative filename reference written as ``scans_tsv``.
     """
     manifest: dict[str, Any] = {
         "dataset_description": {
@@ -119,7 +119,7 @@ def generate_manifest_yaml(
             for k, v in dataset_description.items()
             if v is not None and v != "" and v != []
         },
-        "datasets_tsv": tsv_filename,
+        "scans_tsv": tsv_filename,
     }
     return yaml.dump(manifest, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
@@ -128,7 +128,7 @@ def generate_tsv(
     rows: list[dict[str, Any]],
     extra_columns: list[str] | None = None,
 ) -> str:
-    """Return tab-separated text for a ``datasets.tsv`` file.
+    """Return tab-separated text for a ``scans.tsv`` file.
 
     Parameters
     ----------

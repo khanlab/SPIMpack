@@ -1,4 +1,4 @@
-"""Streamlit-based UI for building SPIMpack manifest and datasets TSV files.
+"""Streamlit-based UI for building SPIMpack manifest and scans TSV files.
 
 Run with:
     streamlit run ui/app.py
@@ -139,13 +139,13 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
             except (OSError, ValueError):
                 st.caption("⚠️ Invalid path")
 
-        # ---- Dataset ID & orientation ----------------------------------------
+        # ---- Participant ID & orientation -------------------------------------
         c1, c2 = st.columns(2)
         with c1:
-            dataset_id: str = st.text_input(
-                "Dataset ID *",
-                key=f"dataset_id_{scan_id}",
-                help="Logical dataset grouping key (e.g. cohort1)",
+            participant_id: str = st.text_input(
+                "Participant ID",
+                key=f"participant_id_{scan_id}",
+                help="Optional BIDS participant_id (e.g. sub-01).",
             )
         with c2:
             orientation: str = st.text_input(
@@ -208,7 +208,7 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
     return {
         "_scan_id": scan_id,
         "_remove": remove_clicked,
-        "dataset_id": dataset_id,
+        "participant_id": participant_id,
         "sub": sub,
         "sample": sample,
         "ses": ses,
@@ -229,7 +229,7 @@ st.set_page_config(
 )
 st.title("🔬 SPIMpack Manifest Builder")
 st.caption(
-    "Build your `manifest.yml` and `datasets.tsv` files interactively, "
+    "Build your `manifest.yml` and `scans.tsv` files interactively, "
     "then download them for use with `spimpack package`."
 )
 
@@ -281,7 +281,7 @@ if authors:
 # ---------------------------------------------------------------------------
 st.header("2. Scan Entries")
 st.caption(
-    "Each scan corresponds to one row in `datasets.tsv`.  "
+    "Each scan corresponds to one row in `scans.tsv`.  "
     "Click **Browse** to pick the SPIM file with a file dialog; "
     "or type the path directly.  Required fields are marked with `*`."
 )
@@ -321,8 +321,8 @@ non_empty_rows = [
 # ---------------------------------------------------------------------------
 tsv_filename = st.text_input(
     "TSV filename",
-    value="datasets.tsv",
-    help="Relative filename stored in manifest.yml as `datasets_tsv`.",
+    value="scans.tsv",
+    help="Relative filename stored in manifest.yml as `scans_tsv`.",
 )
 
 # ---------------------------------------------------------------------------
@@ -353,7 +353,7 @@ with dl_col1:
     )
 with dl_col2:
     st.download_button(
-        label="⬇️ Download datasets.tsv",
+        label="⬇️ Download scans.tsv",
         data=tsv_content,
         file_name=tsv_filename,
         mime="text/tab-separated-values",
@@ -366,7 +366,7 @@ with dl_col2:
 with st.expander("Preview manifest.yml", expanded=False):
     st.code(manifest_yaml, language="yaml")
 
-with st.expander("Preview datasets.tsv", expanded=False):
+with st.expander("Preview scans.tsv", expanded=False):
     st.code(tsv_content)
 
 # ---------------------------------------------------------------------------
@@ -460,4 +460,3 @@ if st.button(
         captured = buf.getvalue()
         if captured:
             st.code(captured)
-

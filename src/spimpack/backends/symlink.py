@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import csv
 import json
 import os
 from pathlib import Path
@@ -32,6 +33,7 @@ class SymlinkWriter:
             json.dumps(dataset_description, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        _write_participants_tsv(manifest, output_dir)
 
         for dataset in manifest.datasets:
             for asset in dataset.assets:
@@ -79,3 +81,30 @@ def _build_dataset_description(user_desc: dict) -> dict:
     if not spimpack_entries:
         desc["GeneratedBy"] = [*generated_by, _SPIMPACK_GENERATED_BY]
     return desc
+
+
+def _write_participants_tsv(manifest: DatasetManifest, output_dir: Path) -> None:
+    if not manifest.participants:
+        return
+
+    metadata_columns: list[str] = []
+    for participant in manifest.participants:
+        for key in participant.metadata:
+            if key not in metadata_columns:
+                metadata_columns.append(key)
+
+    columns = ["participant_id", *metadata_columns]
+    participants_path = output_dir / "participants.tsv"
+    with participants_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=columns,
+            delimiter="\t",
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        for participant in sorted(manifest.participants, key=lambda item: item.participant_id):
+            row = {"participant_id": participant.participant_id}
+            for key in metadata_columns:
+                row[key] = participant.metadata.get(key, "")
+            writer.writerow(row)
