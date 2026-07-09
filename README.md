@@ -129,7 +129,7 @@ A browser window opens automatically.  You can also navigate to
 4. Run the CLI as usual:
 
 ```bash
-pixi run spimpack package \
+spimpack package \
   --manifest manifest.yml \
   --output-dir /path/to/output \
   --backend symlink
