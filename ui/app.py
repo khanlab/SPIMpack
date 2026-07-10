@@ -1,4 +1,4 @@
-"""Streamlit-based UI for building SPIMpack manifest and datasets TSV files.
+"""Streamlit-based UI for building SPIMpack manifest and scans TSV files.
 
 Run with:
     streamlit run ui/app.py
@@ -139,28 +139,20 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
             except (OSError, ValueError):
                 st.caption("⚠️ Invalid path")
 
-        # ---- Dataset ID & orientation ----------------------------------------
-        c1, c2 = st.columns(2)
-        with c1:
-            dataset_id: str = st.text_input(
-                "Dataset ID *",
-                key=f"dataset_id_{scan_id}",
-                help="Logical dataset grouping key (e.g. cohort1)",
-            )
-        with c2:
-            orientation: str = st.text_input(
-                "Orientation XYZ *",
-                key=f"orient_{scan_id}",
-                placeholder="LPS",
-                help="Image orientation string, e.g. LPS",
-            )
+        # ---- Orientation -------------------------------------------------------
+        orientation: str = st.text_input(
+            "Orientation XYZ *",
+            key=f"orient_{scan_id}",
+            placeholder="LPS",
+            help="Image orientation string, e.g. LPS",
+        )
 
         # ---- BIDS entities ---------------------------------------------------
         e1, e2, e3, e4 = st.columns(4)
         with e1:
-            sub: str = st.text_input(
-                "Subject (sub) *",
-                key=f"sub_{scan_id}",
+            subject: str = st.text_input(
+                "Subject (subject) *",
+                key=f"subject_{scan_id}",
                 help="BIDS subject label — alphanumeric only, e.g. 01",
             )
         with e2:
@@ -170,15 +162,15 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
                 help="BIDS sample label — alphanumeric only, e.g. s01",
             )
         with e3:
-            ses: str = st.text_input(
-                "Session (ses)",
-                key=f"ses_{scan_id}",
+            session: str = st.text_input(
+                "Session (session)",
+                key=f"session_{scan_id}",
                 help="BIDS session label (optional) — alphanumeric only",
             )
         with e4:
-            acq: str = st.text_input(
-                "Acquisition (acq)",
-                key=f"acq_{scan_id}",
+            acquisition: str = st.text_input(
+                "Acquisition (acquisition)",
+                key=f"acquisition_{scan_id}",
                 help="BIDS acquisition label (optional), e.g. 4x",
             )
 
@@ -208,11 +200,10 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
     return {
         "_scan_id": scan_id,
         "_remove": remove_clicked,
-        "dataset_id": dataset_id,
-        "sub": sub,
+        "subject": subject,
         "sample": sample,
-        "ses": ses,
-        "acq": acq,
+        "session": session,
+        "acquisition": acquisition,
         "spim_path": spim_path,
         "orientation_string_xyz": orientation,
         "sample_staining": ";".join(staining_channels),
@@ -229,7 +220,7 @@ st.set_page_config(
 )
 st.title("🔬 SPIMpack Manifest Builder")
 st.caption(
-    "Build your `manifest.yml` and `datasets.tsv` files interactively, "
+    "Build your `manifest.yml` and `scans.tsv` files interactively, "
     "then download them for use with `spimpack package`."
 )
 
@@ -281,7 +272,7 @@ if authors:
 # ---------------------------------------------------------------------------
 st.header("2. Scan Entries")
 st.caption(
-    "Each scan corresponds to one row in `datasets.tsv`.  "
+    "Each scan corresponds to one row in `scans.tsv`.  "
     "Click **Browse** to pick the SPIM file with a file dialog; "
     "or type the path directly.  Required fields are marked with `*`."
 )
@@ -321,8 +312,8 @@ non_empty_rows = [
 # ---------------------------------------------------------------------------
 tsv_filename = st.text_input(
     "TSV filename",
-    value="datasets.tsv",
-    help="Relative filename stored in manifest.yml as `datasets_tsv`.",
+    value="scans.tsv",
+    help="Relative filename stored in manifest.yml as `scans_tsv`.",
 )
 
 # ---------------------------------------------------------------------------
@@ -353,7 +344,7 @@ with dl_col1:
     )
 with dl_col2:
     st.download_button(
-        label="⬇️ Download datasets.tsv",
+        label="⬇️ Download scans.tsv",
         data=tsv_content,
         file_name=tsv_filename,
         mime="text/tab-separated-values",
@@ -366,7 +357,7 @@ with dl_col2:
 with st.expander("Preview manifest.yml", expanded=False):
     st.code(manifest_yaml, language="yaml")
 
-with st.expander("Preview datasets.tsv", expanded=False):
+with st.expander("Preview scans.tsv", expanded=False):
     st.code(tsv_content)
 
 # ---------------------------------------------------------------------------
@@ -460,4 +451,3 @@ if st.button(
         captured = buf.getvalue()
         if captured:
             st.code(captured)
-

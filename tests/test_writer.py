@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from spimpack.backends.symlink import SymlinkWriter
-from spimpack.models import BidsEntities, DatasetManifest, DatasetSpec, ImageAsset
+from spimpack.models import BidsEntities, DatasetManifest, DatasetSpec, ImageAsset, ParticipantSpec
 from spimpack.validation import validate_manifest
 
 _VALID_DD = {"Name": "Demo", "BIDSVersion": "1.9.0", "DatasetType": "raw", "License": "CC0"}
@@ -21,7 +21,7 @@ class WriterTests(unittest.TestCase):
                     dataset_id="d1",
                     assets=[
                         ImageAsset(
-                            source_ims=source,
+                            spim_path=source,
                             entities=BidsEntities(
                                 subject="01",
                                 sample="s01",
@@ -91,7 +91,7 @@ class WriterTests(unittest.TestCase):
                         dataset_id="d1",
                         assets=[
                             ImageAsset(
-                                source_ims=source,
+                                spim_path=source,
                                 entities=BidsEntities(subject="01", sample="s01"),
                                 orientation_string_xyz="LPS",
                                 sample_staining=["ch1"],
@@ -99,9 +99,13 @@ class WriterTests(unittest.TestCase):
                         ],
                     )
                 ],
+                participants=[ParticipantSpec(participant_id="sub-01", metadata={"sex": "M"})],
             )
             out = root / "out"
             SymlinkWriter().write(manifest, out)
             dd = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
             spimpack_entries = [e for e in dd["GeneratedBy"] if e.get("Name") == "SPIMpack"]
             self.assertEqual(len(spimpack_entries), 1)
+            participants = (out / "participants.tsv").read_text(encoding="utf-8")
+            self.assertIn("participant_id\tsex", participants)
+            self.assertIn("sub-01\tM", participants)

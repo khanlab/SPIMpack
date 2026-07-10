@@ -13,22 +13,21 @@ _VALID_DD = "dataset_description:\n  Name: Demo\n  BIDSVersion: 1.9.0\n  Dataset
 
 
 class CliTests(unittest.TestCase):
-    def test_cli_packages_from_yaml_and_tsv(self) -> None:
+    def test_cli_packages_from_yaml_and_scans_tsv(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "raw.ims"
             source.write_text("ims", encoding="utf-8")
 
-            tsv = root / "datasets.tsv"
-            tsv.write_text(
+            scans = root / "scans.tsv"
+            scans.write_text(
                 "\t".join(
                     [
-                        "dataset_id",
-                        "sub",
-                        "ses",
+                        "subject",
+                        "session",
                         "sample",
-                        "acq",
-                        "source_ims",
+                        "acquisition",
+                        "spim_path",
                         "orientation_string_xyz",
                         "sample_staining",
                         "Species",
@@ -37,7 +36,6 @@ class CliTests(unittest.TestCase):
                 + "\n"
                 + "\t".join(
                     [
-                        "demo",
                         "01",
                         "01",
                         "s01",
@@ -53,7 +51,7 @@ class CliTests(unittest.TestCase):
             )
 
             manifest = root / "manifest.yml"
-            manifest.write_text(_VALID_DD + "datasets_tsv: datasets.tsv\n", encoding="utf-8")
+            manifest.write_text(_VALID_DD + "scans_tsv: scans.tsv\n", encoding="utf-8")
 
             out = root / "out"
             rc = main(
@@ -84,21 +82,28 @@ class CliTests(unittest.TestCase):
             source = root / "raw.ims"
             source.write_text("ims", encoding="utf-8")
 
-            tsv = root / "datasets.tsv"
-            tsv.write_text(
+            scans = root / "scans.tsv"
+            scans.write_text(
                 "\t".join(
-                    ["dataset_id", "sub", "ses", "sample", "source_ims", "orientation_string_xyz", "sample_staining"]
+                    [
+                        "subject",
+                        "session",
+                        "sample",
+                        "spim_path",
+                        "orientation_string_xyz",
+                        "sample_staining",
+                    ]
                 )
                 + "\n"
-                + "\t".join(["ds1", "01", "01", "s01", str(source), "LPS", "c1"])
+                + "\t".join(["01", "01", "s01", str(source), "LPS", "c1"])
                 + "\n"
-                + "\t".join(["ds1", "02", "01", "s01", str(source), "LPS", "c1"])
+                + "\t".join(["02", "01", "s01", str(source), "LPS", "c1"])
                 + "\n",
                 encoding="utf-8",
             )
 
             manifest = root / "manifest.yml"
-            manifest.write_text(_VALID_DD + "datasets_tsv: datasets.tsv\n", encoding="utf-8")
+            manifest.write_text(_VALID_DD + "scans_tsv: scans.tsv\n", encoding="utf-8")
 
             out = root / "out"
             captured = io.StringIO()
@@ -109,6 +114,44 @@ class CliTests(unittest.TestCase):
             output = captured.getvalue()
             self.assertIn("Packaging complete", output)
             self.assertIn(str(out), output)
-            self.assertIn("Datasets         : 1", output)   # 1 dataset (ds1)
-            self.assertIn("Subjects         : 2", output)   # 2 subjects (01, 02)
-            self.assertIn("Scans            : 2", output)   # 2 scans total
+            self.assertIn("Datasets         : 1", output)
+            self.assertIn("Subjects         : 2", output)
+            self.assertIn("Scans            : 2", output)
+
+    def test_cli_writes_participants_from_participants_tsv(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "raw.ims"
+            source.write_text("ims", encoding="utf-8")
+
+            (root / "participants.tsv").write_text(
+                "participant_id\tsex\tage\tgenotype\nsub-01\tF\t10\twt\n",
+                encoding="utf-8",
+            )
+            (root / "scans.tsv").write_text(
+                "\t".join(
+                    [
+                        "subject",
+                        "sample",
+                        "spim_path",
+                        "orientation_string_xyz",
+                        "sample_staining",
+                    ]
+                )
+                + "\n"
+                + "\t".join(["01", "s01", str(source), "LPS", "c1"])
+                + "\n",
+                encoding="utf-8",
+            )
+            manifest = root / "manifest.yml"
+            manifest.write_text(
+                _VALID_DD + "scans_tsv: scans.tsv\nparticipants_tsv: participants.tsv\n",
+                encoding="utf-8",
+            )
+
+            out = root / "out"
+            rc = main(["package", "--manifest", str(manifest), "--output-dir", str(out)])
+            self.assertEqual(rc, 0)
+            participants_out = (out / "participants.tsv").read_text(encoding="utf-8")
+            self.assertIn("participant_id\tsex\tage\tgenotype", participants_out)
+            self.assertIn("sub-01\tF\t10\twt", participants_out)

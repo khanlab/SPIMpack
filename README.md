@@ -31,7 +31,7 @@ Sidecars preserve metadata that cannot be embedded in Imaris assets, including r
 
 ## Input format
 
-Manifest input is YAML with optional TSV-driven asset rows.
+Manifest input is YAML with optional TSV-driven scan rows.
 
 ### YAML manifest example
 
@@ -44,27 +44,27 @@ dataset_description:
   Authors:
     - Author Name 1
     - Author Name 2
-datasets_tsv: datasets.tsv
+scans_tsv: scans.tsv
+participants_tsv: participants.tsv  # optional
 ```
 
 The writer automatically appends a `GeneratedBy` entry for SPIMpack if not already present.
 
-### TSV columns
+### scans.tsv columns
 
 Required:
 
 | Column                   | Description                              |
 |--------------------------|------------------------------------------|
-| `dataset_id`             | Logical dataset grouping key             |
 | `subject`                | BIDS subject label (alphanumeric only)   |
 | `sample`                 | BIDS sample label (alphanumeric only)    |
 | `spim_path`              | Absolute path to the source microscopy asset (e.g. `.ims`, `.ome.zarr`) |
 | `orientation_string_xyz` | Image orientation (e.g. `LPS`)           |
 | `sample_staining`        | Semicolon-separated channel names        |
 
-Optional (entity columns):
+Optional:
 
-| Column | Description                                                |
+| Column                   | Description                              |
 |--------------------------|------------------------------------------|
 | `session`                | BIDS session label (alphanumeric only)   |
 | `acquisition`            | BIDS acquisition label, e.g. `4x`        |
@@ -74,9 +74,20 @@ Any additional columns are written into the sidecar JSON.
 ### Example TSV
 
 ```tsv
-dataset_id	subject	session	sample	acquisition	spim_path	orientation_string_xyz	sample_staining	Species
-cohort1	01	01	s01	4x1	/data/raw/sub01.ims	RPI	Abeta;YoPro;CD31	mouse
+subject	session	sample	acquisition	spim_path	orientation_string_xyz	sample_staining	Species
+01	01	s01	4x1	/data/raw/sub01.ims	RPI	Abeta;YoPro;CD31	mouse
 ```
+
+### participants.tsv (optional)
+
+Use participant-level metadata once per participant and SPIMpack will write BIDS `participants.tsv`:
+
+```tsv
+participant_id	sex	age	genotype
+sub-01	F	10	wt
+```
+
+When `participants.tsv` is present, each `scans.tsv` row must reference a known participant via `subject`.
 
 ## Validation
 
@@ -85,7 +96,7 @@ Before writing, SPIMpack validates:
 - Required `dataset_description` fields: `Name`, `BIDSVersion`, `DatasetType`, `License`
 - `DatasetType` must be `raw` or `derivative`
 - `Authors` must be a list if provided
-- BIDS entity values (`sub`, `ses`, `sample`, `acq`) must be **alphanumeric only** (letters and numbers, no hyphens or special characters)
+- BIDS entity values (`subject`, `session`, `sample`, `acquisition`) must be **alphanumeric only** (letters and numbers, no hyphens or special characters)
 - Required columns to map to BIDS sidecar metadata: `orientation_string_xyz`, `sample_staining`
 - Source SPIM datasets (can be .ims, .ome.zarr, .ozx; any format ZarrNii supports) must exist
 
@@ -104,7 +115,7 @@ Symlinks are absolute by default. Use `--relative-symlinks` to create relative s
 ## Interactive UI
 
 SPIMpack ships with an optional Streamlit-based web UI that lets you define
-manifests and datasets tables without editing YAML or TSV files by hand.
+manifests and scans tables without editing YAML or TSV files by hand.
 
 ### Running the UI
 
@@ -119,12 +130,12 @@ A browser window opens automatically.  You can also navigate to
 
 1. **Dataset Description** – fill in the form fields (name, BIDS version,
    dataset type, license, authors).
-2. **Datasets Table** – use the interactive table to add one row per imaging
+2. **Scans Table** – use the interactive table to add one row per imaging
    acquisition.  Required columns are marked with `*`; optional BIDS entity
-   columns (`ses`, `acq`) can be left blank.  Extra PascalCase columns are
+   columns (`session`, `acquisition`) can be left blank.  Extra PascalCase columns are
    written to the sidecar JSON.
 3. **Validate & Download** – any validation errors are shown inline.  Once the
-   form is valid, download `manifest.yml` and `datasets.tsv` with the provided
+   form is valid, download `manifest.yml` and `scans.tsv` with the provided
    buttons.
 4. Run the CLI as usual:
 

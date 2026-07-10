@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from spimpack.models import BidsEntities, DatasetManifest, DatasetSpec, ImageAsset
+from spimpack.models import BidsEntities, DatasetManifest, DatasetSpec, ImageAsset, ParticipantSpec
 from spimpack.validation import ValidationError, validate_manifest
 
 _VALID_DD = {"Name": "Demo", "BIDSVersion": "1.9.0", "DatasetType": "raw", "License": "CC0"}
@@ -12,7 +12,7 @@ _VALID_DD = {"Name": "Demo", "BIDSVersion": "1.9.0", "DatasetType": "raw", "Lice
 
 def _valid_asset(ims: Path, *, orientation_string_xyz: str = "LPS") -> ImageAsset:
     return ImageAsset(
-        source_ims=ims,
+        spim_path=ims,
         entities=BidsEntities(subject="01", sample="s01"),
         orientation_string_xyz=orientation_string_xyz,
         sample_staining=["ch1"],
@@ -59,7 +59,7 @@ class ValidationTests(unittest.TestCase):
                         dataset_id="d1",
                         assets=[
                             ImageAsset(
-                                source_ims=ims,
+                                spim_path=ims,
                                 entities=BidsEntities(subject="01-bad!", sample="s01"),
                                 orientation_string_xyz="LPS",
                                 sample_staining=["ch1"],
@@ -105,7 +105,7 @@ class ValidationTests(unittest.TestCase):
                         dataset_id="d1",
                         assets=[
                             ImageAsset(
-                                source_ims=ims,
+                                spim_path=ims,
                                 entities=BidsEntities(subject="01", sample="s01"),
                                 orientation_string_xyz="LPS",
                                 sample_staining=["ch1"],
@@ -118,3 +118,15 @@ class ValidationTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 validate_manifest(manifest)
 
+    def test_participants_must_cover_scan_subjects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ims = Path(tmp) / "source.ims"
+            ims.write_text("x", encoding="utf-8")
+            manifest = DatasetManifest(
+                dataset_description=_VALID_DD,
+                datasets=[DatasetSpec(dataset_id="d1", assets=[_valid_asset(ims)])],
+                participants=[ParticipantSpec(participant_id="sub-02")],
+            )
+            with self.assertRaises(ValidationError) as ctx:
+                validate_manifest(manifest)
+            self.assertIn("sub-01", str(ctx.exception))

@@ -7,6 +7,7 @@ from .models import (
     SIDECAR_ASSET_FIELDS,
     BidsEntities,
     DatasetManifest,
+    participant_label_from_id,
 )
 
 _BIDS_LABEL_RE = re.compile(r"^[A-Za-z0-9]+$")
@@ -60,13 +61,14 @@ def validate_manifest(manifest: DatasetManifest) -> None:
     if extra_required and not isinstance(extra_required, list):
         raise ValidationError("dataset_description.RequiredMicroscopyFields must be a list")
 
-    dataset_ids: set[str] = set()
+    participant_labels = {
+        participant_label_from_id(participant.participant_id)
+        for participant in manifest.participants
+    }
+    for label in participant_labels:
+        _validate_bids_label(label, "participant_id")
+
     for dataset in manifest.datasets:
-        if not dataset.dataset_id:
-            raise ValidationError("dataset_id is required for each dataset")
-        if dataset.dataset_id in dataset_ids:
-            raise ValidationError(f"duplicate dataset_id: {dataset.dataset_id}")
-        dataset_ids.add(dataset.dataset_id)
 
         for asset in dataset.assets:
             if not asset.spim_path:
@@ -77,6 +79,10 @@ def validate_manifest(manifest: DatasetManifest) -> None:
                 raise ValidationError(f"spim_path does not exist: {asset.spim_path}")
 
             _validate_entities(asset.entities)
+            if participant_labels and asset.entities.subject not in participant_labels:
+                raise ValidationError(
+                    f"scan subject sub-{asset.entities.subject} is not listed in participants.tsv"
+                )
 
             missing_sidecar = []
             for key in SIDECAR_ASSET_FIELDS:

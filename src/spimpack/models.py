@@ -11,7 +11,7 @@ REQUIRED_DATASET_DESCRIPTION_FIELDS = ("Name", "BIDSVersion", "DatasetType", "Li
 SIDECAR_ASSET_FIELDS = ("orientation_string_xyz", "sample_staining")
 
 #: TSV columns that are required and map to ImageAsset / dataset fields (not entities, not sidecar).
-REQUIRED_CORE_TSV_COLUMNS = ("dataset_id", "spim_path", "orientation_string_xyz", "sample_staining")
+REQUIRED_CORE_TSV_COLUMNS = ("spim_path", "orientation_string_xyz", "sample_staining")
 
 #: Path pattern used by pybids build_path for BIDS microscopy assets.
 BIDS_MICR_PATTERN = (
@@ -20,12 +20,26 @@ BIDS_MICR_PATTERN = (
 )
 
 
+def participant_id_with_prefix(participant_id: str) -> str:
+    normalized = participant_id.strip()
+    if normalized.startswith("sub-"):
+        return normalized
+    return f"sub-{normalized}"
+
+
+def participant_label_from_id(participant_id: str) -> str:
+    normalized = participant_id.strip()
+    if normalized.startswith("sub-"):
+        return normalized[4:]
+    return normalized
+
+
 @dataclass(frozen=True)
 class EntityDef:
     """Definition of a BIDS entity used in filenames and TSV columns."""
 
-    long_name: str   # used in BidsEntities and pybids build_path
-    short_name: str  # used as TSV column header (e.g. 'sub', 'ses', 'acq')
+    long_name: str   # used in BidsEntities and TSV headers
+    short_name: str  # used in BIDS filename tokens (e.g. sub-, ses-, acq-)
     required: bool
 
 
@@ -68,8 +82,17 @@ class DatasetSpec:
 
 
 @dataclass(frozen=True)
+class ParticipantSpec:
+    """One participant row used to generate BIDS participants.tsv."""
+
+    participant_id: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class DatasetManifest:
     """Top-level package manifest consumed by writer backends."""
 
     dataset_description: dict[str, Any]
     datasets: list[DatasetSpec]
+    participants: list[ParticipantSpec] = field(default_factory=list)
