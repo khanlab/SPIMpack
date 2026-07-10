@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import streamlit as st
+import pandas as pd
 
 # Allow running directly from the repo root without installing the package.
 # When streamlit executes `streamlit run ui/app.py`, the working directory is
@@ -25,8 +26,11 @@ if str(_ui_dir) not in sys.path:
     sys.path.insert(0, str(_ui_dir))
 
 from generate import (  # noqa: E402
+    DEFAULT_PARTICIPANTS_COLUMNS,
     generate_manifest_yaml,
+    generate_participants_tsv,
     generate_tsv,
+    parse_participants_file,
     validate_form,
 )
 from spimpack.cli import run_package  # noqa: E402
@@ -317,9 +321,135 @@ tsv_filename = st.text_input(
 )
 
 # ---------------------------------------------------------------------------
-# Section 3 – Validate & Download
+# Section 3 – Participants (optional)
 # ---------------------------------------------------------------------------
-st.header("3. Validate & Download")
+st.header("3. Participants (optional)")
+st.caption(
+    "Configure `participants.tsv`.  "
+    "The table is pre-populated with unique subject IDs from the scan entries above.  "
+    "You can edit the rows directly or import an existing file."
+)
+
+# Derive unique participant IDs from the scans entered so far.
+_scans_subjects: list[str] = [
+    f"sub-{r['subject']}"
+    for r in non_empty_rows
+    if r.get("subject", "").strip()
+]
+# Preserve insertion order while deduplicating.
+_seen: set[str] = set()
+_unique_subjects: list[str] = []
+for _s in _scans_subjects:
+    if _s not in _seen:
+        _seen.add(_s)
+        _unique_subjects.append(_s)
+
+# Initialise participants table in session state.
+if "participants_rows" not in st.session_state:
+    st.session_state["participants_rows"] = []
+
+# Sync participant_id rows from scan entries (add new, keep existing metadata).
+_existing_ids = {r["participant_id"] for r in st.session_state["participants_rows"]}
+for _pid in _unique_subjects:
+    if _pid not in _existing_ids:
+        st.session_state["participants_rows"].append(
+            {"participant_id": _pid, "age": "", "sex": "", "genotype": "", "treatment": ""}
+        )
+
+# ---- Import from existing file -------------------------------------------
+with st.expander("📥 Import from existing file (xls / xlsx / csv / tsv)", expanded=False):
+    st.caption(
+        "Upload a file to import participant metadata.  "
+        "After upload you can remap column names to the default columns."
+    )
+    uploaded_file = st.file_uploader(
+        "Choose file",
+        type=["xls", "xlsx", "csv", "tsv"],
+        key="participants_upload",
+        label_visibility="collapsed",
+    )
+    if uploaded_file is not None:
+        try:
+            _import_cols, _import_rows = parse_participants_file(
+                uploaded_file.read(), uploaded_file.name
+            )
+        except (ImportError, ValueError, Exception) as _exc:  # noqa: BLE001
+            st.error(f"❌ Could not read file: {_exc}")
+        else:
+            st.write(f"**Columns found:** {', '.join(_import_cols)}")
+            st.markdown("Map source columns to target columns (leave blank to skip):")
+            _target_cols = list(DEFAULT_PARTICIPANTS_COLUMNS)
+            _mapping: dict[str, str] = {}
+            _map_cols = st.columns(len(_target_cols))
+            for _col_idx, _target in enumerate(_target_cols):
+                with _map_cols[_col_idx]:
+                    # Pre-select a source column if its name matches the target.
+                    _default_src = _target if _target in _import_cols else "— skip —"
+                    _selected_src = st.selectbox(
+                        f"→ `{_target}`",
+                        options=["— skip —"] + _import_cols,
+                        index=(["— skip —"] + _import_cols).index(_default_src),
+                        key=f"col_map_{_target}",
+                    )
+                    if _selected_src != "— skip —":
+                        _mapping[_selected_src] = _target
+
+            if st.button("✅ Apply import", key="apply_participants_import"):
+                _imported: list[dict[str, Any]] = []
+                for _src_row in _import_rows:
+                    _new_row: dict[str, Any] = {c: "" for c in DEFAULT_PARTICIPANTS_COLUMNS}
+                    for _src_col, _tgt_col in _mapping.items():
+                        _new_row[_tgt_col] = _src_row.get(_src_col, "")
+                    # Also carry over any unmapped columns as-is.
+                    for _src_col, _val in _src_row.items():
+                        if _src_col not in _mapping:
+                            _new_row[_src_col] = _val
+                    _imported.append(_new_row)
+                st.session_state["participants_rows"] = _imported
+                st.rerun()
+
+# ---- Editable participants table -----------------------------------------
+_pt_df = pd.DataFrame(
+    st.session_state["participants_rows"] or [
+        {c: "" for c in DEFAULT_PARTICIPANTS_COLUMNS}
+    ]
+)
+# Ensure all default columns exist.
+for _dc in DEFAULT_PARTICIPANTS_COLUMNS:
+    if _dc not in _pt_df.columns:
+        _pt_df[_dc] = ""
+
+_edited_pt = st.data_editor(
+    _pt_df,
+    num_rows="dynamic",
+    use_container_width=True,
+    key="participants_editor",
+    column_config={
+        "participant_id": st.column_config.TextColumn(
+            "participant_id",
+            help="BIDS participant ID, e.g. sub-01",
+            required=True,
+        ),
+        "age": st.column_config.TextColumn("age"),
+        "sex": st.column_config.TextColumn("sex"),
+        "genotype": st.column_config.TextColumn("genotype"),
+        "treatment": st.column_config.TextColumn("treatment"),
+    },
+)
+
+# Persist edits back to session state.
+st.session_state["participants_rows"] = _edited_pt.to_dict(orient="records")
+
+_participants_rows_clean = [
+    r for r in st.session_state["participants_rows"]
+    if str(r.get("participant_id", "")).strip()
+]
+participants_tsv_content = generate_participants_tsv(_participants_rows_clean)
+
+# ---------------------------------------------------------------------------
+# Section 4 – Validate & Download
+# ---------------------------------------------------------------------------
+st.header("4. Validate & Download")
 
 errors = validate_form(dataset_description, non_empty_rows)
 
@@ -333,7 +463,7 @@ else:
 manifest_yaml = generate_manifest_yaml(dataset_description, tsv_filename)
 tsv_content = generate_tsv(non_empty_rows)
 
-dl_col1, dl_col2 = st.columns(2)
+dl_col1, dl_col2, dl_col3 = st.columns(3)
 with dl_col1:
     st.download_button(
         label="⬇️ Download manifest.yml",
@@ -350,6 +480,15 @@ with dl_col2:
         mime="text/tab-separated-values",
         disabled=bool(errors),
     )
+with dl_col3:
+    st.download_button(
+        label="⬇️ Download participants.tsv",
+        data=participants_tsv_content,
+        file_name="participants.tsv",
+        mime="text/tab-separated-values",
+        disabled=not bool(_participants_rows_clean),
+        help="Only enabled when at least one participant row has a participant_id.",
+    )
 
 # ---------------------------------------------------------------------------
 # Previews
@@ -360,10 +499,13 @@ with st.expander("Preview manifest.yml", expanded=False):
 with st.expander("Preview scans.tsv", expanded=False):
     st.code(tsv_content)
 
+with st.expander("Preview participants.tsv", expanded=False):
+    st.code(participants_tsv_content)
+
 # ---------------------------------------------------------------------------
-# Section 4 – Run spimpack package
+# Section 5 – Run spimpack package
 # ---------------------------------------------------------------------------
-st.header("4. Run spimpack package")
+st.header("5. Run spimpack package")
 st.caption(
     "Save the generated files to disk and invoke `spimpack package` directly. "
     "The manifest and TSV are written to the paths you specify below before the "
