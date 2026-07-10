@@ -87,12 +87,7 @@ def load_manifest(path: Path) -> DatasetManifest:
 
 
 def _resolve_scans_tsv(manifest_path: Path) -> Path | None:
-    manifest_dir = manifest_path.parent.resolve()
-    scans_default = (manifest_dir / "scans.tsv").resolve()
-    try:
-        scans_default.relative_to(manifest_dir)
-    except ValueError as exc:
-        raise ValueError("scans_tsv must resolve inside the manifest directory") from exc
+    scans_default = _resolve_manifest_table_path(manifest_path, "scans.tsv", "scans_tsv")
     if scans_default.is_file():
         return scans_default
     return None

@@ -163,13 +163,13 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
             )
         with e3:
             session: str = st.text_input(
-                "Session",
+                "Session (session)",
                 key=f"session_{scan_id}",
                 help="BIDS session label (optional) — alphanumeric only",
             )
         with e4:
             acquisition: str = st.text_input(
-                "Acquisition",
+                "Acquisition (acquisition)",
                 key=f"acquisition_{scan_id}",
                 help="BIDS acquisition label (optional), e.g. 4x",
             )
