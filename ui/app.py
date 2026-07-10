@@ -151,7 +151,7 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
         e1, e2, e3, e4 = st.columns(4)
         with e1:
             subject: str = st.text_input(
-                "Subject *",
+                "Subject (subject) *",
                 key=f"subject_{scan_id}",
                 help="BIDS subject label — alphanumeric only, e.g. 01",
             )

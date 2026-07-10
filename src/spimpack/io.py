@@ -73,7 +73,7 @@ def load_manifest(path: Path) -> DatasetManifest:
 
     participants = _load_participants(path, raw)
 
-    scans_tsv_path = _resolve_scans_tsv(path, raw)
+    scans_tsv_path = _resolve_scans_tsv(path)
     if scans_tsv_path:
         scan_assets = _load_scan_assets(scans_tsv_path, participants)
         if scan_assets:
@@ -86,8 +86,13 @@ def load_manifest(path: Path) -> DatasetManifest:
     )
 
 
-def _resolve_scans_tsv(manifest_path: Path, _raw_manifest: dict[str, Any]) -> Path | None:
-    scans_default = _resolve_manifest_table_path(manifest_path, "scans.tsv", "scans_tsv")
+def _resolve_scans_tsv(manifest_path: Path) -> Path | None:
+    manifest_dir = manifest_path.parent.resolve()
+    scans_default = (manifest_dir / "scans.tsv").resolve()
+    try:
+        scans_default.relative_to(manifest_dir)
+    except ValueError as exc:
+        raise ValueError("scans_tsv must resolve inside the manifest directory") from exc
     if scans_default.is_file():
         return scans_default
     return None

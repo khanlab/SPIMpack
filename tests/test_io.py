@@ -53,7 +53,7 @@ class IoTests(unittest.TestCase):
             self.assertEqual(manifest.participants[0].participant_id, "sub-01")
             self.assertEqual(manifest.participants[0].metadata["sex"], "F")
 
-    def test_requires_long_entity_column_names(self) -> None:
+    def test_rejects_short_entity_column_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "raw.ims"
