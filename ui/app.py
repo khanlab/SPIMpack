@@ -463,8 +463,8 @@ else:
 manifest_yaml = generate_manifest_yaml(dataset_description, tsv_filename)
 tsv_content = generate_tsv(non_empty_rows)
 
-dl_col1, dl_col2, dl_col3 = st.columns(3)
-with dl_col1:
+manifest_col, scans_col, participants_col = st.columns(3)
+with manifest_col:
     st.download_button(
         label="⬇️ Download manifest.yml",
         data=manifest_yaml,
@@ -472,7 +472,7 @@ with dl_col1:
         mime="text/yaml",
         disabled=bool(errors),
     )
-with dl_col2:
+with scans_col:
     st.download_button(
         label="⬇️ Download scans.tsv",
         data=tsv_content,
@@ -480,13 +480,13 @@ with dl_col2:
         mime="text/tab-separated-values",
         disabled=bool(errors),
     )
-with dl_col3:
+with participants_col:
     st.download_button(
         label="⬇️ Download participants.tsv",
         data=participants_tsv_content,
         file_name="participants.tsv",
         mime="text/tab-separated-values",
-        disabled=not bool(_participants_rows_clean),
+        disabled=not _participants_rows_clean,
         help="Only enabled when at least one participant row has a participant_id.",
     )
 
