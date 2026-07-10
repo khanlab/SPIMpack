@@ -5,7 +5,6 @@ import json
 import tempfile
 import unittest
 import unittest.mock
-import warnings
 from pathlib import Path
 
 from spimpack.cli import main
@@ -24,10 +23,10 @@ class CliTests(unittest.TestCase):
             scans.write_text(
                 "\t".join(
                     [
-                        "sub",
-                        "ses",
+                        "subject",
+                        "session",
                         "sample",
-                        "acq",
+                        "acquisition",
                         "spim_path",
                         "orientation_string_xyz",
                         "sample_staining",
@@ -77,76 +76,6 @@ class CliTests(unittest.TestCase):
             dd = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
             self.assertTrue(any(e.get("Name") == "SPIMpack" for e in dd["GeneratedBy"]))
 
-    def test_cli_legacy_datasets_tsv_still_works_with_warning(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            source = root / "raw.ims"
-            source.write_text("ims", encoding="utf-8")
-
-            datasets = root / "datasets.tsv"
-            datasets.write_text(
-                "\t".join(
-                    ["sub", "sample", "spim_path", "orientation_string_xyz", "sample_staining"]
-                )
-                + "\n"
-                + "\t".join(["01", "s01", str(source), "LPS", "c1"])
-                + "\n",
-                encoding="utf-8",
-            )
-
-            manifest = root / "manifest.yml"
-            manifest.write_text(_VALID_DD + "datasets_tsv: datasets.tsv\n", encoding="utf-8")
-
-            out = root / "out"
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                rc = main(["package", "--manifest", str(manifest), "--output-dir", str(out)])
-
-            self.assertEqual(rc, 0)
-            messages = [str(w.message) for w in caught]
-            self.assertTrue(any("datasets_tsv is deprecated" in message for message in messages))
-
-    def test_cli_prefers_scans_tsv_when_both_files_exist(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            source = root / "raw.ims"
-            source.write_text("ims", encoding="utf-8")
-
-            (root / "scans.tsv").write_text(
-                "\t".join(
-                    ["sub", "sample", "spim_path", "orientation_string_xyz", "sample_staining", "Species"]
-                )
-                + "\n"
-                + "\t".join(["01", "s01", str(source), "LPS", "c1", "mouse"])
-                + "\n",
-                encoding="utf-8",
-            )
-            (root / "datasets.tsv").write_text(
-                "\t".join(
-                    ["sub", "sample", "spim_path", "orientation_string_xyz", "sample_staining", "Species"]
-                )
-                + "\n"
-                + "\t".join(["01", "s01", str(source), "LPS", "c1", "rat"])
-                + "\n",
-                encoding="utf-8",
-            )
-
-            manifest = root / "manifest.yml"
-            manifest.write_text(_VALID_DD, encoding="utf-8")
-
-            out = root / "out"
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                rc = main(["package", "--manifest", str(manifest), "--output-dir", str(out)])
-
-            self.assertEqual(rc, 0)
-            messages = [str(w.message) for w in caught]
-            self.assertTrue(any("Both scans.tsv and deprecated datasets.tsv exist" in message for message in messages))
-            sidecar = json.loads(
-                (out / "sub-01/micr/sub-01_sample-s01_SPIM.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(sidecar["Species"], "mouse")
-
     def test_cli_prints_summary_after_packaging(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -155,7 +84,16 @@ class CliTests(unittest.TestCase):
 
             scans = root / "scans.tsv"
             scans.write_text(
-                "\t".join(["sub", "ses", "sample", "spim_path", "orientation_string_xyz", "sample_staining"])
+                "\t".join(
+                    [
+                        "subject",
+                        "session",
+                        "sample",
+                        "spim_path",
+                        "orientation_string_xyz",
+                        "sample_staining",
+                    ]
+                )
                 + "\n"
                 + "\t".join(["01", "01", "s01", str(source), "LPS", "c1"])
                 + "\n"
@@ -193,7 +131,7 @@ class CliTests(unittest.TestCase):
             (root / "scans.tsv").write_text(
                 "\t".join(
                     [
-                        "sub",
+                        "subject",
                         "sample",
                         "spim_path",
                         "orientation_string_xyz",

@@ -150,9 +150,9 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
         # ---- BIDS entities ---------------------------------------------------
         e1, e2, e3, e4 = st.columns(4)
         with e1:
-            sub: str = st.text_input(
-                "Subject (sub) *",
-                key=f"sub_{scan_id}",
+            subject: str = st.text_input(
+                "Subject *",
+                key=f"subject_{scan_id}",
                 help="BIDS subject label — alphanumeric only, e.g. 01",
             )
         with e2:
@@ -162,15 +162,15 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
                 help="BIDS sample label — alphanumeric only, e.g. s01",
             )
         with e3:
-            ses: str = st.text_input(
-                "Session (ses)",
-                key=f"ses_{scan_id}",
+            session: str = st.text_input(
+                "Session",
+                key=f"session_{scan_id}",
                 help="BIDS session label (optional) — alphanumeric only",
             )
         with e4:
-            acq: str = st.text_input(
-                "Acquisition (acq)",
-                key=f"acq_{scan_id}",
+            acquisition: str = st.text_input(
+                "Acquisition",
+                key=f"acquisition_{scan_id}",
                 help="BIDS acquisition label (optional), e.g. 4x",
             )
 
@@ -200,10 +200,10 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
     return {
         "_scan_id": scan_id,
         "_remove": remove_clicked,
-        "sub": sub,
+        "subject": subject,
         "sample": sample,
-        "ses": ses,
-        "acq": acq,
+        "session": session,
+        "acquisition": acquisition,
         "spim_path": spim_path,
         "orientation_string_xyz": orientation,
         "sample_staining": ";".join(staining_channels),

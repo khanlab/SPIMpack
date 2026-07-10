@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import warnings
 from pathlib import Path
 from typing import Any
 
@@ -21,9 +20,9 @@ from .models import (
 
 
 # Derive column sets from the single source of truth in models.py
-_REQUIRED_ENTITY_COLUMNS = tuple(ed.short_name for ed in BIDS_ENTITY_DEFS if ed.required)
-_OPTIONAL_ENTITY_COLUMNS = tuple(ed.short_name for ed in BIDS_ENTITY_DEFS if not ed.required)
-_ALL_ENTITY_SHORT_NAMES = frozenset(ed.short_name for ed in BIDS_ENTITY_DEFS)
+_REQUIRED_ENTITY_COLUMNS = tuple(ed.long_name for ed in BIDS_ENTITY_DEFS if ed.required)
+_OPTIONAL_ENTITY_COLUMNS = tuple(ed.long_name for ed in BIDS_ENTITY_DEFS if not ed.required)
+_ALL_ENTITY_COLUMNS = frozenset(ed.long_name for ed in BIDS_ENTITY_DEFS)
 
 REQUIRED_TSV_COLUMNS = _REQUIRED_ENTITY_COLUMNS + REQUIRED_CORE_TSV_COLUMNS
 
@@ -36,10 +35,10 @@ def _parse_channels(raw: str | list[str]) -> list[str]:
 
 
 def _entities_from_row(row: dict[str, str]) -> BidsEntities:
-    """Build BidsEntities from a TSV row using short entity column names."""
+    """Build BidsEntities from a TSV row using long entity column names."""
     kwargs: dict[str, str | None] = {}
     for ed in BIDS_ENTITY_DEFS:
-        kwargs[ed.long_name] = row.get(ed.short_name) or None
+        kwargs[ed.long_name] = row.get(ed.long_name) or None
     return BidsEntities(**kwargs)  # type: ignore[arg-type]
 
 
@@ -60,12 +59,6 @@ def load_manifest(path: Path) -> DatasetManifest:
 
     for index, dataset in enumerate(raw.get("datasets", []), start=1):
         dataset_id = dataset.get("dataset_id") or f"dataset-{index}"
-        if dataset.get("dataset_id"):
-            warnings.warn(
-                "dataset_id is deprecated and ignored for scan-level behavior.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         assets = [
             ImageAsset(
                 spim_path=Path(asset["spim_path"]).expanduser(),
@@ -95,45 +88,11 @@ def load_manifest(path: Path) -> DatasetManifest:
 
 def _resolve_scans_tsv(manifest_path: Path, raw_manifest: dict[str, Any]) -> Path | None:
     scans_tsv = raw_manifest.get("scans_tsv")
-    datasets_tsv = raw_manifest.get("datasets_tsv")
-
-    if scans_tsv and datasets_tsv:
-        warnings.warn(
-            "Both scans_tsv and deprecated datasets_tsv are set; scans_tsv will be used.",
-            UserWarning,
-            stacklevel=3,
-        )
     if scans_tsv:
         return _resolve_manifest_table_path(manifest_path, scans_tsv, "scans_tsv")
-    if datasets_tsv:
-        warnings.warn(
-            "datasets_tsv is deprecated; rename to scans_tsv and use scans.tsv.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        return _resolve_manifest_table_path(manifest_path, datasets_tsv, "datasets_tsv")
-
     scans_default = manifest_path.parent / "scans.tsv"
-    datasets_default = manifest_path.parent / "datasets.tsv"
-    scans_exists = scans_default.exists()
-    datasets_exists = datasets_default.exists()
-
-    if scans_exists and datasets_exists:
-        warnings.warn(
-            "Both scans.tsv and deprecated datasets.tsv exist; scans.tsv will be used.",
-            UserWarning,
-            stacklevel=3,
-        )
+    if scans_default.exists():
         return scans_default.resolve()
-    if scans_exists:
-        return scans_default.resolve()
-    if datasets_exists:
-        warnings.warn(
-            "datasets.tsv is deprecated; rename it to scans.tsv.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        return datasets_default.resolve()
     return None
 
 
@@ -150,13 +109,6 @@ def _load_scan_assets(
                 f"scans_tsv missing required columns: {', '.join(missing)}"
             )
 
-        if "dataset_id" in fieldnames:
-            warnings.warn(
-                "dataset_id column in scan manifests is deprecated and ignored.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-
         participant_map = {
             participant_label_from_id(p.participant_id): p for p in participants
         }
@@ -164,23 +116,11 @@ def _load_scan_assets(
         scan_assets: list[ImageAsset] = []
         for scan_row in reader:
             if participant_map:
-                scan_subject = (scan_row.get("sub") or "").strip()
+                scan_subject = (scan_row.get("subject") or "").strip()
                 if scan_subject not in participant_map:
                     raise ValueError(
                         f"scan subject sub-{scan_subject} is not listed in participants.tsv"
                     )
-
-                participant_id = (scan_row.get("participant_id") or "").strip()
-                if participant_id:
-                    participant_label = participant_label_from_id(participant_id)
-                    if participant_label not in participant_map:
-                        raise ValueError(
-                            f"scan references unknown participant_id: {participant_id}"
-                        )
-                    if scan_subject and scan_subject != participant_label:
-                        raise ValueError(
-                            "scan sub and participant_id must refer to the same participant."
-                        )
 
             scan_assets.append(
                 ImageAsset(
@@ -258,11 +198,11 @@ def _resolve_manifest_table_path(
 def _parse_row_metadata(row: dict[str, str], fieldnames: list[str]) -> dict[str, Any]:
     """Extract sidecar metadata from a TSV row.
 
-    Columns that are BIDS entity short names or core required columns are skipped.
+    Columns that are BIDS entity names or core required columns are skipped.
     Remaining columns whose names start with an uppercase letter (PascalCase) are
     treated as JSON sidecar metadata and preserved as-is.
     """
-    skip = _ALL_ENTITY_SHORT_NAMES | set(REQUIRED_CORE_TSV_COLUMNS) | {"dataset_id", "participant_id"}
+    skip = _ALL_ENTITY_COLUMNS | set(REQUIRED_CORE_TSV_COLUMNS)
     metadata: dict[str, Any] = {}
     for key in fieldnames:
         value = row.get(key)

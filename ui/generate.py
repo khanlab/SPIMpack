@@ -22,10 +22,10 @@ _VALID_DATASET_TYPES = {"raw", "derivative"}
 
 # Derive required/optional entity column names from the single source of truth.
 _REQUIRED_ENTITY_COLUMNS: tuple[str, ...] = tuple(
-    ed.short_name for ed in BIDS_ENTITY_DEFS if ed.required
+    ed.long_name for ed in BIDS_ENTITY_DEFS if ed.required
 )
 _OPTIONAL_ENTITY_COLUMNS: tuple[str, ...] = tuple(
-    ed.short_name for ed in BIDS_ENTITY_DEFS if not ed.required
+    ed.long_name for ed in BIDS_ENTITY_DEFS if not ed.required
 )
 
 #: All TSV columns that must be present for a valid row.
@@ -89,10 +89,10 @@ def validate_form(
 
         # BIDS entity labels must be alphanumeric
         for ed in BIDS_ENTITY_DEFS:
-            val = str(row.get(ed.short_name, "")).strip()
+            val = str(row.get(ed.long_name, "")).strip()
             if val and not _BIDS_LABEL_RE.match(val):
                 errors.append(
-                    f"Row {i}: '{ed.short_name}' must contain only letters and numbers"
+                    f"Row {i}: '{ed.long_name}' must contain only letters and numbers"
                     f" (got {val!r})."
                 )
 

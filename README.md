@@ -66,12 +66,6 @@ Optional:
 
 | Column                   | Description                              |
 |--------------------------|------------------------------------------|
-| `participant_id`         | Deprecated compatibility alias for participant linkage; use `sub` as the canonical participant key |
-
-Optional (entity columns):
-
-| Column | Description                                                |
-|--------------------------|------------------------------------------|
 | `session`                | BIDS session label (alphanumeric only)   |
 | `acquisition`            | BIDS acquisition label, e.g. `4x`        |
 
@@ -80,7 +74,7 @@ Any additional columns are written into the sidecar JSON.
 ### Example TSV
 
 ```tsv
-sub	ses	sample	acq	spim_path	orientation_string_xyz	sample_staining	Species
+subject	session	sample	acquisition	spim_path	orientation_string_xyz	sample_staining	Species
 01	01	s01	4x1	/data/raw/sub01.ims	RPI	Abeta;YoPro;CD31	mouse
 ```
 
@@ -93,13 +87,7 @@ participant_id	sex	age	genotype
 sub-01	F	10	wt
 ```
 
-When `participants.tsv` is present, each `scans.tsv` row must reference a known participant via `sub`. The legacy `participant_id` column is optional.
-
-### Deprecations and migration
-
-- `datasets.tsv` is deprecated and kept as a one-cycle compatibility alias for `scans.tsv`.
-- `datasets_tsv` in `manifest.yml` is deprecated; use `scans_tsv`.
-- `dataset_id` in scan rows is deprecated and ignored.
+When `participants.tsv` is present, each `scans.tsv` row must reference a known participant via `subject`.
 
 ## Validation
 
@@ -108,7 +96,7 @@ Before writing, SPIMpack validates:
 - Required `dataset_description` fields: `Name`, `BIDSVersion`, `DatasetType`, `License`
 - `DatasetType` must be `raw` or `derivative`
 - `Authors` must be a list if provided
-- BIDS entity values (`sub`, `ses`, `sample`, `acq`) must be **alphanumeric only** (letters and numbers, no hyphens or special characters)
+- BIDS entity values (`subject`, `session`, `sample`, `acquisition`) must be **alphanumeric only** (letters and numbers, no hyphens or special characters)
 - Required columns to map to BIDS sidecar metadata: `orientation_string_xyz`, `sample_staining`
 - Source SPIM datasets (can be .ims, .ome.zarr, .ozx; any format ZarrNii supports) must exist
 
@@ -144,7 +132,7 @@ A browser window opens automatically.  You can also navigate to
    dataset type, license, authors).
 2. **Scans Table** – use the interactive table to add one row per imaging
    acquisition.  Required columns are marked with `*`; optional BIDS entity
-   columns (`ses`, `acq`) can be left blank.  Extra PascalCase columns are
+   columns (`session`, `acquisition`) can be left blank.  Extra PascalCase columns are
    written to the sidecar JSON.
 3. **Validate & Download** – any validation errors are shown inline.  Once the
    form is valid, download `manifest.yml` and `scans.tsv` with the provided

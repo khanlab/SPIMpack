@@ -38,8 +38,8 @@ def participant_label_from_id(participant_id: str) -> str:
 class EntityDef:
     """Definition of a BIDS entity used in filenames and TSV columns."""
 
-    long_name: str   # used in BidsEntities and pybids build_path
-    short_name: str  # used as TSV column header (e.g. 'sub', 'ses', 'acq')
+    long_name: str   # used in BidsEntities and TSV headers
+    short_name: str  # used in BIDS filename tokens (e.g. sub-, ses-, acq-)
     required: bool
 
 

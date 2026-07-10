@@ -24,10 +24,10 @@ _VALID_DD = {
 }
 
 _VALID_ROW = {
-    "sub": "01",
+    "subject": "01",
     "sample": "s01",
-    "ses": "",
-    "acq": "",
+    "session": "",
+    "acquisition": "",
     "spim_path": "/data/raw/sub01.ims",
     "orientation_string_xyz": "LPS",
     "sample_staining": "nuclei;membrane",
@@ -69,34 +69,34 @@ class TestValidateForm(unittest.TestCase):
         self.assertTrue(any("row" in e.lower() for e in errors))
 
     def test_missing_required_tsv_column_returns_error(self):
-        row = {**_VALID_ROW, "sub": ""}
+        row = {**_VALID_ROW, "subject": ""}
         errors = validate_form(_VALID_DD, [row])
-        self.assertTrue(any("sub" in e for e in errors))
+        self.assertTrue(any("subject" in e for e in errors))
 
     def test_invalid_bids_label_returns_error(self):
-        row = {**_VALID_ROW, "sub": "sub-01"}  # hyphen is not allowed
+        row = {**_VALID_ROW, "subject": "sub-01"}  # hyphen is not allowed
         errors = validate_form(_VALID_DD, [row])
-        self.assertTrue(any("sub" in e for e in errors))
+        self.assertTrue(any("subject" in e for e in errors))
 
     def test_valid_bids_label_alphanumeric(self):
-        row = {**_VALID_ROW, "sub": "01", "sample": "s01A"}
+        row = {**_VALID_ROW, "subject": "01", "sample": "s01A"}
         errors = validate_form(_VALID_DD, [row])
         self.assertEqual(errors, [])
 
     def test_optional_bids_entity_blank_is_valid(self):
-        row = {**_VALID_ROW, "ses": "", "acq": ""}
+        row = {**_VALID_ROW, "session": "", "acquisition": ""}
         errors = validate_form(_VALID_DD, [row])
         self.assertEqual(errors, [])
 
     def test_optional_bids_entity_set_and_valid(self):
-        row = {**_VALID_ROW, "ses": "01", "acq": "4x"}
+        row = {**_VALID_ROW, "session": "01", "acquisition": "4x"}
         errors = validate_form(_VALID_DD, [row])
         self.assertEqual(errors, [])
 
     def test_optional_bids_entity_invalid_label(self):
-        row = {**_VALID_ROW, "ses": "01-a"}  # hyphen not allowed
+        row = {**_VALID_ROW, "session": "01-a"}  # hyphen not allowed
         errors = validate_form(_VALID_DD, [row])
-        self.assertTrue(any("ses" in e for e in errors))
+        self.assertTrue(any("session" in e for e in errors))
 
 
 class TestGenerateManifestYaml(unittest.TestCase):
@@ -131,7 +131,7 @@ class TestGenerateTsv(unittest.TestCase):
     def test_header_row_present(self):
         tsv = generate_tsv([_VALID_ROW])
         first_line = tsv.splitlines()[0]
-        self.assertIn("sub", first_line)
+        self.assertIn("subject", first_line)
         self.assertIn("spim_path", first_line)
 
     def test_default_columns_in_header(self):
@@ -165,7 +165,7 @@ class TestGenerateTsv(unittest.TestCase):
         self.assertEqual(len(lines), 1)
 
     def test_multiple_rows(self):
-        row2 = {**_VALID_ROW, "sub": "02"}
+        row2 = {**_VALID_ROW, "subject": "02"}
         tsv = generate_tsv([_VALID_ROW, row2])
         lines = tsv.splitlines()
         self.assertEqual(len(lines), 3)
