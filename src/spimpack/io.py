@@ -22,7 +22,7 @@ from .models import (
 # Derive column sets from the single source of truth in models.py
 _REQUIRED_ENTITY_COLUMNS = tuple(ed.long_name for ed in BIDS_ENTITY_DEFS if ed.required)
 _OPTIONAL_ENTITY_COLUMNS = tuple(ed.long_name for ed in BIDS_ENTITY_DEFS if not ed.required)
-_ALL_ENTITY_COLUMNS = frozenset(ed.long_name for ed in BIDS_ENTITY_DEFS)
+_ALL_ENTITY_COLUMN_NAMES = frozenset(ed.long_name for ed in BIDS_ENTITY_DEFS)
 
 REQUIRED_TSV_COLUMNS = _REQUIRED_ENTITY_COLUMNS + REQUIRED_CORE_TSV_COLUMNS
 
@@ -90,9 +90,9 @@ def _resolve_scans_tsv(manifest_path: Path, raw_manifest: dict[str, Any]) -> Pat
     scans_tsv = raw_manifest.get("scans_tsv")
     if scans_tsv:
         return _resolve_manifest_table_path(manifest_path, scans_tsv, "scans_tsv")
-    scans_default = manifest_path.parent / "scans.tsv"
+    scans_default = _resolve_manifest_table_path(manifest_path, "scans.tsv", "scans_tsv")
     if scans_default.exists():
-        return scans_default.resolve()
+        return scans_default
     return None
 
 
@@ -202,7 +202,7 @@ def _parse_row_metadata(row: dict[str, str], fieldnames: list[str]) -> dict[str,
     Remaining columns whose names start with an uppercase letter (PascalCase) are
     treated as JSON sidecar metadata and preserved as-is.
     """
-    skip = _ALL_ENTITY_COLUMNS | set(REQUIRED_CORE_TSV_COLUMNS)
+    skip = _ALL_ENTITY_COLUMN_NAMES | set(REQUIRED_CORE_TSV_COLUMNS)
     metadata: dict[str, Any] = {}
     for key in fieldnames:
         value = row.get(key)

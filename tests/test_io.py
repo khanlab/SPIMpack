@@ -68,4 +68,7 @@ class IoTests(unittest.TestCase):
 
             with self.assertRaises(ValueError) as ctx:
                 load_manifest(manifest_path)
-            self.assertIn("scans_tsv missing required columns: subject", str(ctx.exception))
+            self.assertEqual(
+                str(ctx.exception),
+                "scans_tsv missing required columns: subject",
+            )
