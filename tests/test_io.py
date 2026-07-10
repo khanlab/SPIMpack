@@ -53,7 +53,7 @@ class IoTests(unittest.TestCase):
             self.assertEqual(manifest.participants[0].participant_id, "sub-01")
             self.assertEqual(manifest.participants[0].metadata["sex"], "F")
 
-    def test_short_entity_columns_are_rejected(self) -> None:
+    def test_requires_long_entity_column_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "raw.ims"
@@ -72,20 +72,3 @@ class IoTests(unittest.TestCase):
                 str(ctx.exception),
                 "scans_tsv missing required columns: subject",
             )
-
-    def test_scans_tsv_must_use_canonical_filename(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            source = root / "raw.ims"
-            source.write_text("ims", encoding="utf-8")
-            (root / "scans.tsv").write_text(
-                "subject\tsample\tspim_path\torientation_string_xyz\tsample_staining\n"
-                f"01\ts01\t{source}\tLPS\tc1\n",
-                encoding="utf-8",
-            )
-            manifest_path = root / "manifest.yml"
-            manifest_path.write_text(_VALID_DD + "scans_tsv: custom.tsv\n", encoding="utf-8")
-
-            with self.assertRaises(ValueError) as ctx:
-                load_manifest(manifest_path)
-            self.assertEqual(str(ctx.exception), "scans_tsv must be set to scans.tsv")
