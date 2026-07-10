@@ -88,10 +88,10 @@ def load_manifest(path: Path) -> DatasetManifest:
 
 def _resolve_scans_tsv(manifest_path: Path, raw_manifest: dict[str, Any]) -> Path | None:
     scans_tsv = raw_manifest.get("scans_tsv")
-    if scans_tsv:
-        return _resolve_manifest_table_path(manifest_path, scans_tsv, "scans_tsv")
+    if scans_tsv and scans_tsv != "scans.tsv":
+        raise ValueError("scans_tsv must be set to scans.tsv")
     scans_default = _resolve_manifest_table_path(manifest_path, "scans.tsv", "scans_tsv")
-    if scans_default.exists():
+    if scans_default.is_file():
         return scans_default
     return None
 
