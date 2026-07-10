@@ -9,10 +9,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "ui"))
 
 from generate import (
+    DEFAULT_PARTICIPANTS_COLUMNS,
     DEFAULT_TSV_COLUMNS,
     REQUIRED_TSV_COLUMNS,
     generate_manifest_yaml,
+    generate_participants_tsv,
     generate_tsv,
+    parse_participants_file,
     validate_form,
 )
 
@@ -169,6 +172,95 @@ class TestGenerateTsv(unittest.TestCase):
         tsv = generate_tsv([_VALID_ROW, row2])
         lines = tsv.splitlines()
         self.assertEqual(len(lines), 3)
+
+
+class TestGenerateParticipantsTsv(unittest.TestCase):
+    _ROW = {
+        "participant_id": "sub-01",
+        "age": "30",
+        "sex": "M",
+        "genotype": "WT",
+        "treatment": "vehicle",
+    }
+
+    def test_header_contains_default_columns(self):
+        tsv = generate_participants_tsv([self._ROW])
+        header = tsv.splitlines()[0].split("\t")
+        for col in DEFAULT_PARTICIPANTS_COLUMNS:
+            self.assertIn(col, header)
+
+    def test_participant_id_is_first_column(self):
+        tsv = generate_participants_tsv([self._ROW])
+        first_col = tsv.splitlines()[0].split("\t")[0]
+        self.assertEqual(first_col, "participant_id")
+
+    def test_data_row_written(self):
+        tsv = generate_participants_tsv([self._ROW])
+        lines = tsv.splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertIn("sub-01", lines[1])
+        self.assertIn("30", lines[1])
+
+    def test_empty_rows_produces_header_only(self):
+        tsv = generate_participants_tsv([])
+        lines = [l for l in tsv.splitlines() if l]
+        self.assertEqual(len(lines), 1)
+
+    def test_extra_column_included(self):
+        row = {**self._ROW, "species": "mouse"}
+        tsv = generate_participants_tsv([row])
+        header = tsv.splitlines()[0]
+        self.assertIn("species", header)
+        self.assertIn("mouse", tsv.splitlines()[1])
+
+    def test_extra_column_parameter(self):
+        tsv = generate_participants_tsv([self._ROW], extra_columns=["notes"])
+        header = tsv.splitlines()[0]
+        self.assertIn("notes", header)
+
+    def test_multiple_rows(self):
+        row2 = {**self._ROW, "participant_id": "sub-02"}
+        tsv = generate_participants_tsv([self._ROW, row2])
+        lines = tsv.splitlines()
+        self.assertEqual(len(lines), 3)
+
+
+class TestParseParticipantsFile(unittest.TestCase):
+    def _make_tsv_bytes(self, header: list[str], rows: list[list[str]]) -> bytes:
+        lines = ["\t".join(header)]
+        for row in rows:
+            lines.append("\t".join(row))
+        return "\n".join(lines).encode("utf-8")
+
+    def _make_csv_bytes(self, header: list[str], rows: list[list[str]]) -> bytes:
+        lines = [",".join(header)]
+        for row in rows:
+            lines.append(",".join(row))
+        return "\n".join(lines).encode("utf-8")
+
+    def test_parse_tsv(self):
+        content = self._make_tsv_bytes(
+            ["participant_id", "age"], [["sub-01", "25"]]
+        )
+        cols, rows = parse_participants_file(content, "participants.tsv")
+        self.assertEqual(cols, ["participant_id", "age"])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["participant_id"], "sub-01")
+        self.assertEqual(rows[0]["age"], "25")
+
+    def test_parse_csv(self):
+        content = self._make_csv_bytes(
+            ["ID", "Age", "Sex"], [["sub-01", "30", "F"]]
+        )
+        cols, rows = parse_participants_file(content, "data.csv")
+        self.assertEqual(cols, ["ID", "Age", "Sex"])
+        self.assertEqual(rows[0]["Sex"], "F")
+
+    def test_parse_empty_tsv(self):
+        content = self._make_tsv_bytes(["participant_id", "age"], [])
+        cols, rows = parse_participants_file(content, "p.tsv")
+        self.assertEqual(cols, ["participant_id", "age"])
+        self.assertEqual(rows, [])
 
 
 if __name__ == "__main__":

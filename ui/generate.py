@@ -1,4 +1,4 @@
-"""Pure-Python helpers for generating manifest YAML and scans TSV content.
+"""Pure-Python helpers for generating manifest YAML and scans/participants TSV content.
 
 These functions are decoupled from Streamlit so they can be tested independently.
 """
@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -36,6 +37,15 @@ DEFAULT_TSV_COLUMNS: tuple[str, ...] = (
     _REQUIRED_ENTITY_COLUMNS
     + _OPTIONAL_ENTITY_COLUMNS
     + ("spim_path", "orientation_string_xyz", "sample_staining")
+)
+
+#: Column order for participants.tsv — participant_id is always first.
+DEFAULT_PARTICIPANTS_COLUMNS: tuple[str, ...] = (
+    "participant_id",
+    "age",
+    "sex",
+    "genotype",
+    "treatment",
 )
 
 
@@ -165,3 +175,95 @@ def generate_tsv(
     for row in rows:
         writer.writerow({col: row.get(col, "") for col in columns})
     return output.getvalue()
+
+
+def generate_participants_tsv(
+    rows: list[dict[str, Any]],
+    extra_columns: list[str] | None = None,
+) -> str:
+    """Return tab-separated text for a ``participants.tsv`` file.
+
+    Parameters
+    ----------
+    rows:
+        Row dicts, each containing at least ``participant_id``.  The default
+        columns (age, sex, genotype, treatment) are included even if empty.
+    extra_columns:
+        Additional column names to append after the default set.
+
+    Returns
+    -------
+    str
+        Complete TSV content including header line.
+    """
+    extra_cols: list[str] = list(extra_columns or [])
+    known = set(DEFAULT_PARTICIPANTS_COLUMNS)
+
+    # Collect any extra columns seen in the rows
+    for row in rows:
+        for key in row:
+            if key not in known and key not in extra_cols:
+                extra_cols.append(key)
+
+    columns = list(DEFAULT_PARTICIPANTS_COLUMNS) + extra_cols
+
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=columns,
+        delimiter="\t",
+        extrasaction="ignore",
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({col: row.get(col, "") for col in columns})
+    return output.getvalue()
+
+
+def parse_participants_file(
+    content: bytes,
+    filename: str,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Parse an uploaded xls/xlsx/csv/tsv file into column names and row dicts.
+
+    Parameters
+    ----------
+    content:
+        Raw file bytes.
+    filename:
+        Original filename; used to detect the file format by extension.
+
+    Returns
+    -------
+    tuple[list[str], list[dict[str, Any]]]
+        ``(columns, rows)`` where *columns* is the list of column names found
+        in the file and *rows* is the list of row dicts.
+    """
+    ext = Path(filename).suffix.lower()
+    if ext in {".xls", ".xlsx"}:
+        try:
+            import openpyxl  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise ImportError(
+                "openpyxl is required to read Excel files.  "
+                "Install it with: pip install openpyxl"
+            ) from exc
+        wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        ws = wb.active
+        row_iter = ws.iter_rows(values_only=True)
+        header = [str(c) if c is not None else "" for c in next(row_iter)]
+        rows = [
+            {header[i]: (str(cell) if cell is not None else "") for i, cell in enumerate(row)}
+            for row in row_iter
+        ]
+    elif ext == ".tsv":
+        reader = csv.DictReader(io.StringIO(content.decode("utf-8")), delimiter="\t")
+        header = list(reader.fieldnames or [])
+        rows = [dict(r) for r in reader]
+    else:
+        # treat as csv
+        reader = csv.DictReader(io.StringIO(content.decode("utf-8")))
+        header = list(reader.fieldnames or [])
+        rows = [dict(r) for r in reader]
+    return header, rows
