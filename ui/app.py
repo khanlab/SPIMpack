@@ -239,7 +239,7 @@ def _render_scan_entry(
         st.markdown("**Sample staining** (select up to 3 channels)")
         stain_cols = st.columns(_MAX_STAINING_CHANNELS)
         staining_channels: list[str] = []
-        staining_channels_raw: list[str] = []  # raw selectbox values for copy
+        staining_selectbox_values: list[str] = []  # raw selectbox values for copy
         for ch_idx, s_col in enumerate(stain_cols):
             with s_col:
                 selected_stain: str = st.selectbox(
@@ -247,7 +247,7 @@ def _render_scan_entry(
                     options=_STAIN_OPTIONS,
                     key=f"stain_{scan_id}_{ch_idx}",
                 )
-                staining_channels_raw.append(selected_stain)
+                staining_selectbox_values.append(selected_stain)
                 if selected_stain == "— custom —":
                     custom_val: str = st.text_input(
                         "Custom stain name",
@@ -270,7 +270,7 @@ def _render_scan_entry(
         "spim_path": spim_path,
         "orientation_string_xyz": orientation,
         "sample_staining": ";".join(staining_channels),
-        "_staining_channels_raw": staining_channels_raw,
+        "_staining_channels_raw": staining_selectbox_values,
     }
 
 
@@ -388,11 +388,11 @@ with _btn_col2:
 
 # Build non-empty rows for validation / generation.
 # Strip internal-only keys (prefixed with "_") before passing to generators.
-non_empty_rows = [
-    {k: v for k, v in r.items() if not k.startswith("_")}
-    for r in scan_results
-    if any(str(v).strip() for k, v in r.items() if not k.startswith("_"))
-]
+non_empty_rows = []
+for r in scan_results:
+    public_fields = {k: v for k, v in r.items() if not k.startswith("_")}
+    if any(str(v).strip() for v in public_fields.values()):
+        non_empty_rows.append(public_fields)
 
 # ---------------------------------------------------------------------------
 # TSV filename
