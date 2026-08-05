@@ -58,12 +58,18 @@ _MAX_STAINING_CHANNELS: int = 3
 # ---------------------------------------------------------------------------
 
 
-def _browse_for_file() -> str | None:
+def _browse_for_file(initialdir: str | None = None) -> str | None:
     """Open a native OS file-picker dialog and return the chosen path.
 
     Uses Tkinter (standard library) so no extra dependencies are required.
     Falls back gracefully to None in headless / server environments where
     Tkinter or a display server is unavailable.
+
+    Parameters
+    ----------
+    initialdir:
+        Directory to open the dialog in initially.  When *None* the dialog
+        uses the platform default (usually the user's home directory).
     """
     try:
         import tkinter as tk
@@ -72,13 +78,16 @@ def _browse_for_file() -> str | None:
         root = tk.Tk()
         root.withdraw()
         root.wm_attributes("-topmost", 1)
-        path = filedialog.askopenfilename(
-            title="Select SPIM file",
-            filetypes=[
+        kwargs: dict[str, Any] = {
+            "title": "Select SPIM file",
+            "filetypes": [
                 ("SPIM files", "*.ims *.zarr *.ome.zarr *.ozx"),
                 ("All files", "*.*"),
             ],
-        )
+        }
+        if initialdir:
+            kwargs["initialdir"] = initialdir
+        path = filedialog.askopenfilename(**kwargs)
         root.destroy()
         return path or None
     except (ImportError, OSError, RuntimeError):
@@ -87,11 +96,51 @@ def _browse_for_file() -> str | None:
         # RuntimeError – Tcl/Tk initialisation failure
         return None
 
-def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
-    """Render all widgets for one scan entry and return its current field values."""
+def _render_scan_entry(
+    scan_id: str,
+    scan_index: int,
+    *,
+    copy_settings: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Render all widgets for one scan entry and return its current field values.
+
+    Parameters
+    ----------
+    copy_settings:
+        When provided (on the very first render of a newly-copied entry) the
+        values are written into session-state so widgets display the copied
+        data.  Only fields *other* than ``spim_path`` and ``subject`` are
+        copied.
+    """
 
     spim_key = f"spim_{scan_id}"
     browse_trigger_key = f"browse_trigger_{scan_id}"
+    initialdir_key = f"initialdir_{scan_id}"
+
+    # ---- Pre-populate copied settings on first render -----------------------
+    if copy_settings is not None:
+        # Copy non-path, non-subject fields into widget keys so they display
+        # the copied values on first render.
+        field_key_map = {
+            "orientation_string_xyz": f"orient_{scan_id}",
+            "sample": f"sample_{scan_id}",
+            "session": f"session_{scan_id}",
+            "acquisition": f"acquisition_{scan_id}",
+        }
+        for field, key in field_key_map.items():
+            if key not in st.session_state and field in copy_settings:
+                st.session_state[key] = copy_settings[field]
+        # Copy stain selections channel by channel.
+        _src_stains = copy_settings.get("_staining_channels_raw", [])
+        for _ch_idx, _stain_val in enumerate(_src_stains):
+            _stain_key = f"stain_{scan_id}_{_ch_idx}"
+            if _stain_key not in st.session_state:
+                st.session_state[_stain_key] = _stain_val
+        # Store the initial browse directory from the source path.
+        src_path = copy_settings.get("spim_path", "")
+        if src_path and initialdir_key not in st.session_state:
+            parent = str(Path(src_path).parent)
+            st.session_state[initialdir_key] = parent
 
     # ---- Handle Browse-triggered selection BEFORE creating text_input ----
     if browse_trigger_key in st.session_state:
@@ -119,8 +168,16 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
         with browse_col:
             st.write("\u00a0")
             if st.button("📂 Browse", key=f"browse_{scan_id}"):
-                selected = _browse_for_file()
+                # Use saved initialdir if available, otherwise derive from current path.
+                _initialdir: str | None = st.session_state.get(initialdir_key)
+                if not _initialdir and spim_path:
+                    with contextlib.suppress(Exception):
+                        _initialdir = str(Path(spim_path).parent)
+                selected = _browse_for_file(initialdir=_initialdir)
                 if selected:
+                    # Update the saved initialdir for subsequent Browse clicks.
+                    with contextlib.suppress(Exception):
+                        st.session_state[initialdir_key] = str(Path(selected).parent)
                     # Set a temporary trigger instead of overwriting the widget key
                     st.session_state[browse_trigger_key] = selected
                     st.rerun()
@@ -182,6 +239,7 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
         st.markdown("**Sample staining** (select up to 3 channels)")
         stain_cols = st.columns(_MAX_STAINING_CHANNELS)
         staining_channels: list[str] = []
+        staining_selectbox_values: list[str] = []  # raw selectbox values for copy
         for ch_idx, s_col in enumerate(stain_cols):
             with s_col:
                 selected_stain: str = st.selectbox(
@@ -189,6 +247,7 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
                     options=_STAIN_OPTIONS,
                     key=f"stain_{scan_id}_{ch_idx}",
                 )
+                staining_selectbox_values.append(selected_stain)
                 if selected_stain == "— custom —":
                     custom_val: str = st.text_input(
                         "Custom stain name",
@@ -211,6 +270,7 @@ def _render_scan_entry(scan_id: str, scan_index: int) -> dict[str, Any]:
         "spim_path": spim_path,
         "orientation_string_xyz": orientation,
         "sample_staining": ";".join(staining_channels),
+        "_staining_channels_raw": staining_selectbox_values,
     }
 
 
@@ -289,7 +349,10 @@ if "scan_ids" not in st.session_state:
 scan_results: list[dict[str, Any]] = []
 to_remove: str | None = None
 for idx, sid in enumerate(st.session_state["scan_ids"]):
-    entry = _render_scan_entry(sid, idx)
+    # Check whether this scan has pending copy settings to apply on first render.
+    _copy_key = f"_copy_settings_{sid}"
+    _pending_copy = st.session_state.pop(_copy_key, None)
+    entry = _render_scan_entry(sid, idx, copy_settings=_pending_copy)
     remove = entry.pop("_remove")
     entry_scan_id = entry.pop("_scan_id")
     if remove:
@@ -302,14 +365,34 @@ if to_remove is not None:
     st.session_state["scan_ids"].remove(to_remove)
     st.rerun()
 
-if st.button("➕ Add Scan", key="add_scan", type="secondary"):
-    st.session_state["scan_ids"].append(str(uuid.uuid4()))
-    st.rerun()
+_btn_col1, _btn_col2 = st.columns([1, 2])
+with _btn_col1:
+    if st.button("➕ Add Scan", key="add_scan", type="secondary"):
+        st.session_state["scan_ids"].append(str(uuid.uuid4()))
+        st.rerun()
+with _btn_col2:
+    if st.button(
+        "➕ Add New (copy settings)",
+        key="add_scan_copy",
+        type="secondary",
+        help="Add a new scan with the same settings as the last scan, except for path and subject.",
+        disabled=len(scan_results) == 0,
+    ):
+        # Capture settings from the last rendered scan to copy (all except path/subject).
+        _last = scan_results[-1] if scan_results else {}
+        _new_id = str(uuid.uuid4())
+        st.session_state["scan_ids"].append(_new_id)
+        # Store the copy settings so the new entry can pre-populate on its first render.
+        st.session_state[f"_copy_settings_{_new_id}"] = _last
+        st.rerun()
 
 # Build non-empty rows for validation / generation.
-non_empty_rows = [
-    r for r in scan_results if any(str(v).strip() for v in r.values())
-]
+# Strip internal-only keys (prefixed with "_") before passing to generators.
+non_empty_rows = []
+for r in scan_results:
+    public_fields = {k: v for k, v in r.items() if not k.startswith("_")}
+    if any(str(v).strip() for v in public_fields.values()):
+        non_empty_rows.append(public_fields)
 
 # ---------------------------------------------------------------------------
 # TSV filename
