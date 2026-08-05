@@ -120,7 +120,7 @@ manifests and scans tables without editing YAML or TSV files by hand.
 ### Running the UI
 
 ```bash
-pixi run spimpack-ui  # or: streamlit run ui/app.py
+pixi run spimpack-ui
 ```
 
 A browser window opens automatically.  You can also navigate to
