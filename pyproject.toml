@@ -13,26 +13,9 @@ license = {file = "LICENSE"}
 authors = [{name = "Khan Lab"}]
 
 
-
-[tool.pixi.package]
-name = { workspace = true } # Inherit from the workspace
-version = { workspace = true }
-
-[tool.pixi.package.build]
-backend = { name = "pixi-build-python", version = "*" }
-
-[tool.pixi.package.host-dependencies]
-hatchling = "*"
-
-[tool.pixi.package.run-dependencies]
-tk = { workspace = true }
-pyyaml = { workspace = true }
-pybids = { workspace = true }
-streamlit = { workspace = true }
-pandas = { workspace = true }
-
 [project.scripts]
 spimpack = "spimpack.cli:main"
+spimpack-ui = "spimpack.ui.launcher:main"
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
@@ -45,12 +28,38 @@ spimpack = { path = ".", editable = true }
 [tool.pixi.environments]
 default = { solve-group = "default" }
 
-[tool.pixi.tasks]
-spimpack-ui = { cmd = ["streamlit", "run", "ui/app.py"], description = "Run SPIMpack browser-based UI." }
-
 [tool.pixi.workspace.dependencies]
 tk = ">=8.6.13,<9"
 pyyaml = ">=6.0.3,<7"
 pybids = ">=0.22.0,<0.23"
 streamlit = ">=1.58.0,<2"
 pandas = ">=3.0.3,<4"
+starlette = ">=0.47,<1.4"
+
+
+[tool.pixi.package]
+name = { workspace = true } # Inherit from the workspace
+version = { workspace = true }
+
+[tool.pixi.package.build]
+backend = { name = "pixi-build-python", version = "*" }
+
+[tool.pixi.package.host-dependencies]
+hatchling = "*"
+
+[tool.pixi.dependencies]
+tk = { workspace = true }
+pyyaml = { workspace = true }
+pybids = { workspace = true }
+streamlit = { workspace = true }
+pandas = { workspace = true }
+starlette = { workspace = true }
+
+[tool.pixi.package.run-dependencies]
+tk = { workspace = true }
+pyyaml = { workspace = true }
+pybids = { workspace = true }
+streamlit = { workspace = true }
+pandas = { workspace = true }
+starlette = { workspace = true }
+
