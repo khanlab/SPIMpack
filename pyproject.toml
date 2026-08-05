@@ -1,6 +1,8 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+
 
 [project]
 name = "spimpack"
@@ -11,18 +13,25 @@ requires-python = ">=3.9"
 license = {file = "LICENSE"}
 authors = [{name = "Khan Lab"}]
 
+
+
+[tool.pixi.package]
+name = { workspace = true } # Inherit from the workspace
+version = { workspace = true }
+
+[tool.pixi.package.build]
+backend = { name = "pixi-build-python", version = "*" }
+
+[tool.pixi.package.host-dependencies]
+hatchling = "*"
+
 [project.scripts]
 spimpack = "spimpack.cli:main"
-
-[tool.setuptools]
-package-dir = {"" = "src"}
-
-[tool.setuptools.packages.find]
-where = ["src"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["linux-64"]
+preview = ["pixi-build"]
 
 [tool.pixi.pypi-dependencies]
 spimpack = { path = ".", editable = true }
