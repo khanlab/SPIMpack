@@ -9,7 +9,6 @@ name = "spimpack"
 version = "0.1.0"
 description = "SPIM dataset packaging/publishing tool with pluggable backends"
 readme = "README.md"
-requires-python = ">=3.9"
 license = {file = "LICENSE"}
 authors = [{name = "Khan Lab"}]
 
@@ -24,6 +23,13 @@ backend = { name = "pixi-build-python", version = "*" }
 
 [tool.pixi.package.host-dependencies]
 hatchling = "*"
+
+[tool.pixi.package.run-dependencies]
+tk = { workspace = true }
+pyyaml = { workspace = true }
+pybids = { workspace = true }
+streamlit = { workspace = true }
+pandas = { workspace = true }
 
 [project.scripts]
 spimpack = "spimpack.cli:main"
@@ -42,7 +48,7 @@ default = { solve-group = "default" }
 [tool.pixi.tasks]
 spimpack-ui = { cmd = ["streamlit", "run", "ui/app.py"], description = "Run SPIMpack browser-based UI." }
 
-[tool.pixi.dependencies]
+[tool.pixi.workspace.dependencies]
 tk = ">=8.6.13,<9"
 pyyaml = ">=6.0.3,<7"
 pybids = ">=0.22.0,<0.23"
