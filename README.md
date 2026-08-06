@@ -2,6 +2,14 @@
 
 SPIMpack is a standalone Python package for packaging/publishing SPIM datasets from existing microscopy source files into BIDS-structured output directories.
 
+## Installation
+
+Install pixi first, then either clone the repo and install, or use the following to install the latest release:
+
+```
+pixi global install spimpack -c https://prefix.dev/akhanf/khanlab -c conda-forge
+```
+
 ## Scope
 
 - Shared metadata/model layer for dataset manifests and validation
@@ -120,7 +128,7 @@ manifests and scans tables without editing YAML or TSV files by hand.
 ### Running the UI
 
 ```bash
-pixi run spimpack-ui  # or: streamlit run ui/app.py
+pixi run spimpack-ui
 ```
 
 A browser window opens automatically.  You can also navigate to
