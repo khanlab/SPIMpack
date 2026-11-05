@@ -204,8 +204,8 @@ def _render_scan_entry(
         orientation: str = st.text_input(
             "Orientation XYZ *",
             key=f"orient_{scan_id}",
-            placeholder="LPS",
-            help="Image orientation string, e.g. LPS",
+            placeholder="RPI",
+            help="Image orientation string, e.g. RPI",
         )
 
         # ---- BIDS entities ---------------------------------------------------
