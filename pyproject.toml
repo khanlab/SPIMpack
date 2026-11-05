@@ -31,19 +31,8 @@ channels = ["conda-forge"]
 platforms = ["linux-64"]
 preview = ["pixi-build"]
 
-[tool.pixi.pypi-dependencies]
-spimpack = { path = ".", editable = true }
-
 [tool.pixi.environments]
 default = { solve-group = "default" }
-
-[tool.pixi.workspace.dependencies]
-tk = ">=8.6.13,<9"
-pyyaml = ">=6.0.3,<7"
-pybids = ">=0.22.0,<0.23"
-streamlit = ">=1.58.0,<2"
-pandas = ">=3.0.3,<4"
-starlette = ">=0.47,<1.4"
 
 
 [tool.pixi.package]
@@ -60,18 +49,12 @@ hatchling = "*"
 hatch-vcs = "*"
 
 [tool.pixi.dependencies]
-tk = { workspace = true }
-pyyaml = { workspace = true }
-pybids = { workspace = true }
-streamlit = { workspace = true }
-pandas = { workspace = true }
-starlette = { workspace = true }
+spimpack = { path = "." }
 
 [tool.pixi.package.run-dependencies]
-tk = { workspace = true }
-pyyaml = { workspace = true }
-pybids = { workspace = true }
-streamlit = { workspace = true }
-pandas = { workspace = true }
-starlette = { workspace = true }
-
+tk = ">=8.6.13,<9"
+pyyaml = ">=6.0.3,<7"
+pybids = ">=0.22.0,<0.23"
+streamlit = ">=1.58.0,<2"
+pandas = ">=3.0.3,<4"
+starlette = ">=0.47,<1.4"
