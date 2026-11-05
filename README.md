@@ -23,12 +23,15 @@ pixi global install spimpack -c https://prefix.dev/akhanf/khanlab -c conda-forge
 
 - top-level `dataset_description.json` with auto-injected SPIMpack `GeneratedBy` entry
 - sidecars named `*_SPIM.json`
-- symlinks named `*_SPIM.ims`
+- symlinks named `*_SPIM.<extension>`, where the extension is derived from the
+  source asset: `.ome.zarr`/`.zarr` stores keep their full extension, while
+  compound file extensions collapse to the plain format extension
+  (e.g. `x.ome.ims` -> `.ims`)
 
 BIDS path structure is built from entities using pybids:
 
 ```
-sub-{subject}/[ses-{session}/]micr/sub-{subject}[_ses-{session}][_sample-{sample}][_acq-{acquisition}]_SPIM.ims
+sub-{subject}/[ses-{session}/]micr/sub-{subject}[_ses-{session}][_sample-{sample}][_acq-{acquisition}]_SPIM{extension}
 ```
 
 Sidecars preserve metadata that cannot be embedded in Imaris assets, including required SPIM fields:

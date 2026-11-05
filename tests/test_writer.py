@@ -75,6 +75,51 @@ class WriterTests(unittest.TestCase):
             link = out / "sub-01/ses-01/micr/sub-01_ses-01_sample-s01_acq-4x1_SPIM.ims"
             self.assertFalse(str(link.readlink()).startswith("/"))
 
+    def test_writer_preserves_source_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            zarr_source = root / "stitched.ome.zarr"
+            zarr_source.mkdir()
+            ome_ims_source = root / "raw.ome.ims"
+            ome_ims_source.write_text("ims", encoding="utf-8")
+
+            manifest = DatasetManifest(
+                dataset_description=_VALID_DD,
+                datasets=[
+                    DatasetSpec(
+                        dataset_id="d1",
+                        assets=[
+                            ImageAsset(
+                                spim_path=zarr_source,
+                                entities=BidsEntities(subject="01", sample="s01"),
+                                orientation_string_xyz="LPS",
+                                sample_staining=["ch1"],
+                            ),
+                            ImageAsset(
+                                spim_path=ome_ims_source,
+                                entities=BidsEntities(subject="02", sample="s01"),
+                                orientation_string_xyz="LPS",
+                                sample_staining=["ch1"],
+                            ),
+                        ],
+                    )
+                ],
+            )
+            out = root / "out"
+            SymlinkWriter().write(manifest, out)
+
+            zarr_link = out / "sub-01/micr/sub-01_sample-s01_SPIM.ome.zarr"
+            self.assertTrue(zarr_link.is_symlink())
+            self.assertTrue(zarr_link.resolve().is_dir())
+            # sidecar sits next to the link without the .ome part
+            self.assertTrue((out / "sub-01/micr/sub-01_sample-s01_SPIM.json").is_file())
+            self.assertFalse((out / "sub-01/micr/sub-01_sample-s01_SPIM.ome.json").exists())
+
+            # .ome.ims collapses to the plain .ims extension
+            ims_link = out / "sub-02/micr/sub-02_sample-s01_SPIM.ims"
+            self.assertTrue(ims_link.is_symlink())
+            self.assertTrue((out / "sub-02/micr/sub-02_sample-s01_SPIM.json").is_file())
+
     def test_generated_by_not_duplicated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

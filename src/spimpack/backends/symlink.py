@@ -44,11 +44,13 @@ class SymlinkWriter:
                     if getattr(asset.entities, ed.long_name)
                 }
                 bids_entities["suffix"] = "SPIM"
-                bids_entities["extension"] = ".ims"
+                bids_entities["extension"] = _bids_extension(asset.spim_path)
 
                 rel_path = build_path(bids_entities, [BIDS_MICR_PATTERN])
                 link_path = output_dir / rel_path
-                json_path = link_path.with_suffix(".json")
+                json_path = output_dir / build_path(
+                    {**bids_entities, "extension": ".json"}, [BIDS_MICR_PATTERN]
+                )
                 link_path.parent.mkdir(parents=True, exist_ok=True)
 
                 if link_path.exists() or link_path.is_symlink():
@@ -68,6 +70,20 @@ class SymlinkWriter:
                     json.dumps(sidecar, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8",
                 )
+
+
+def _bids_extension(source: Path) -> str:
+    """Extension for the BIDS symlink, derived from the source asset name.
+
+    Compound `.ome.*` names collapse to the plain format extension for files
+    (e.g. `x.ome.ims` -> `.ims`), but `.ome.zarr` stores keep the full form.
+    """
+    name = source.name.lower()
+    if name.endswith(".ome.zarr"):
+        return ".ome.zarr"
+    if name.endswith(".zarr"):
+        return ".zarr"
+    return source.suffix or ".ims"
 
 
 def _build_dataset_description(user_desc: dict) -> dict:
