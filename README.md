@@ -22,6 +22,9 @@ pixi global install spimpack -c https://prefix.dev/akhanf/khanlab -c conda-forge
 `symlink` writes:
 
 - top-level `dataset_description.json` with auto-injected SPIMpack `GeneratedBy` entry
+- `samples.tsv` (`participant_id`, `sample_id`, `sample_type`), one row per
+  subject/sample with `sample_type` set to `tissue`, plus `samples.json`
+  (same as SPIMprep; required for BIDS microscopy)
 - sidecars named `*_SPIM.json`
 - symlinks named `*_SPIM.<extension>`, where the extension is derived from the
   source asset: `.ome.zarr`/`.zarr` stores keep their full extension, while
@@ -161,6 +164,8 @@ Rules:
   values are an error. Missing values are written as `n/a`.
 - `participants.json` is merged (conflicting keys are an error), `.bidsignore` lines
   are combined.
+- `samples.tsv`/`samples.json`: any rows/columns from the source(s) are combined with
+  the SPIM samples on (`participant_id`, `sample_id`); conflicting values are an error.
 - Any path provided by two sources (unless the files are identical) or by a source
   and SPIMpack is an error.
 - The output directory must be new or empty. To pick up changes in the source
