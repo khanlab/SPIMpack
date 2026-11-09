@@ -21,11 +21,19 @@ from bids import BIDSLayout, BIDSLayoutIndexer
 
 from .layout import asset_relpaths
 from .models import DatasetManifest, ParticipantSpec, participant_id_with_prefix
+from .samples import SAMPLES_COLUMNS, SAMPLES_JSON, spim_sample_rows
 from .validation import ValidationError
 
 #: Top-level files that are merged rather than linked.
 MERGED_TOPLEVEL_FILES = frozenset(
-    {"dataset_description.json", "participants.tsv", "participants.json", ".bidsignore"}
+    {
+        "dataset_description.json",
+        "participants.tsv",
+        "participants.json",
+        "samples.tsv",
+        "samples.json",
+        ".bidsignore",
+    }
 )
 
 _MISSING_VALUES = frozenset({"", "n/a"})
@@ -43,6 +51,9 @@ class BidsSource:
     bidsignore: list[str]
     files: dict[str, Path]  # posix relpath -> absolute source path (merged files excluded)
     sessions: dict[str, set[str]]  # subject label -> session labels
+    samples_columns: list[str] = field(default_factory=list)
+    samples: list[dict[str, str]] = field(default_factory=list)
+    samples_json: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -110,6 +121,9 @@ class MergePlan:
     bidsignore: list[str]
     links: dict[str, Path]  # posix relpath -> source path
     report: SubjectReport
+    samples_columns: list[str]
+    samples: list[dict[str, str]]
+    samples_json: dict[str, Any]
     warnings: list[str] = field(default_factory=list)
 
 
@@ -181,6 +195,15 @@ def load_bids_source(root: Path) -> BidsSource:
         else []
     )
 
+    samples_columns, samples = _read_samples(root / "samples.tsv")
+    samples_json: dict[str, Any] = {}
+    sj_path = root / "samples.json"
+    if sj_path.is_file():
+        try:
+            samples_json = json.loads(sj_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValidationError(f"invalid JSON in {sj_path}: {exc}") from exc
+
     return BidsSource(
         root=root,
         dataset_description=dataset_description,
@@ -190,6 +213,9 @@ def load_bids_source(root: Path) -> BidsSource:
         bidsignore=bidsignore,
         files=files,
         sessions=sessions,
+        samples_columns=samples_columns,
+        samples=samples,
+        samples_json=samples_json,
     )
 
 
@@ -258,6 +284,12 @@ def plan_bids_merge(manifest: DatasetManifest, sources: list[BidsSource]) -> Mer
     dataset_description = _merge_dataset_description(manifest, sources, warnings)
     columns, participants = _merge_participants(manifest, sources, report, errors)
     participants_json = _merge_participants_json(sources, errors)
+    samples_columns, samples = _merge_samples(manifest, sources, errors)
+    samples_json = _merge_json(
+        "samples.json", [(str(s.root), s.samples_json) for s in sources], errors
+    )
+    for key, value in SAMPLES_JSON.items():
+        samples_json.setdefault(key, value)
 
     bidsignore: list[str] = []
     for source in sources:
@@ -281,6 +313,9 @@ def plan_bids_merge(manifest: DatasetManifest, sources: list[BidsSource]) -> Mer
         bidsignore=bidsignore,
         links=links,
         report=report,
+        samples_columns=samples_columns,
+        samples=samples,
+        samples_json=samples_json,
         warnings=warnings,
     )
 
@@ -413,3 +448,68 @@ def _merge_participants_json(sources: list[BidsSource], errors: list[str]) -> di
             merged.setdefault(key, value)
             owner.setdefault(key, source.root)
     return merged
+
+
+def _merge_json(
+    name: str, items: list[tuple[str, dict[str, Any]]], errors: list[str]
+) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    owner: dict[str, str] = {}
+    for origin, data in items:
+        for key, value in data.items():
+            if key in merged and merged[key] != value:
+                errors.append(f"{name} conflict for '{key}' between {owner[key]} and {origin}")
+                continue
+            merged.setdefault(key, value)
+            owner.setdefault(key, origin)
+    return merged
+
+
+def _read_samples(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    if not path.is_file():
+        return [], []
+    with path.open("r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        fieldnames = list(reader.fieldnames or [])
+        missing = [c for c in ("participant_id", "sample_id") if c not in fieldnames]
+        if missing:
+            raise ValidationError(f"{path} missing required column(s): {', '.join(missing)}")
+        rows = [
+            {k: (v or "").strip() for k, v in row.items() if k}
+            for row in reader
+            if (row.get("participant_id") or "").strip() and (row.get("sample_id") or "").strip()
+        ]
+    return fieldnames, rows
+
+
+def _merge_samples(
+    manifest: DatasetManifest, sources: list[BidsSource], errors: list[str]
+) -> tuple[list[str], list[dict[str, str]]]:
+    """Combine source samples.tsv rows with the SPIM samples, keyed on (participant_id, sample_id)."""
+    columns = list(SAMPLES_COLUMNS)
+    rows: dict[tuple[str, str], dict[str, str]] = {}
+    row_origin: dict[tuple[tuple[str, str], str], str] = {}
+
+    tables = [(str(s.root), s.samples_columns, s.samples) for s in sources]
+    tables.append(("SPIM scans", SAMPLES_COLUMNS, spim_sample_rows(manifest)))
+    for origin, table_columns, table_rows in tables:
+        columns.extend(c for c in table_columns if c not in columns)
+        for raw in table_rows:
+            key = (
+                participant_id_with_prefix(raw["participant_id"]),
+                raw["sample_id"] if raw["sample_id"].startswith("sample-") else f"sample-{raw['sample_id']}",
+            )
+            row = rows.setdefault(key, {"participant_id": key[0], "sample_id": key[1]})
+            for column, value in raw.items():
+                if column in ("participant_id", "sample_id") or value in _MISSING_VALUES:
+                    continue
+                existing = row.get(column, "")
+                if existing in _MISSING_VALUES:
+                    row[column] = value
+                    row_origin[(key, column)] = origin
+                elif existing != value:
+                    errors.append(
+                        f"samples.tsv conflict for {key[0]} {key[1]} column '{column}': "
+                        f"{existing!r} ({row_origin[(key, column)]}) vs {value!r} ({origin})"
+                    )
+    return columns, [rows[k] for k in sorted(rows)]
