@@ -686,8 +686,12 @@ if source_sessions is not None and loaded_sources:
     with st.expander("Subject matching (SPIM scans vs BIDS dataset)", expanded=True):
         st.code(subject_report(non_empty_rows, source_sessions).format())
 
+participants_filename = "participants.tsv" if _participants_rows_clean else None
 manifest_yaml = generate_manifest_yaml(
-    dataset_description, tsv_filename, bids_sources=bids_source_paths
+    dataset_description,
+    tsv_filename,
+    bids_sources=bids_source_paths,
+    participants_filename=participants_filename,
 )
 tsv_content = generate_tsv(non_empty_rows)
 
@@ -815,7 +819,17 @@ if st.button(
         manifest_path_obj.parent.mkdir(parents=True, exist_ok=True)
         manifest_path_obj.write_text(manifest_yaml, encoding="utf-8")
         tsv_path_obj.write_text(tsv_content, encoding="utf-8")
-        st.info(f"Saved `{manifest_path_obj}` and `{tsv_path_obj}`")
+        _saved = [manifest_path_obj, tsv_path_obj]
+        _participants_path = manifest_path_obj.parent / "participants.tsv"
+        if participants_filename:
+            _participants_path.write_text(participants_tsv_content, encoding="utf-8")
+            _saved.append(_participants_path)
+        elif _participants_path.exists():
+            st.warning(
+                f"⚠️ `{_participants_path}` already exists and will be used by "
+                "spimpack, although the participants table above is empty."
+            )
+        st.info("Saved " + ", ".join(f"`{p}`" for p in _saved))
     except OSError as exc:
         st.error(f"❌ Failed to save files: {exc}")
     else:

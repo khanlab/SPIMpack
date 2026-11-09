@@ -296,3 +296,14 @@ class BidsSourceFormTests(unittest.TestCase):
         text = generate_manifest_yaml(_VALID_DD, "scans.tsv", bids_sources=["/data/mri"])
         self.assertEqual(yaml.safe_load(text)["bids_sources"], [{"path": "/data/mri"}])
         self.assertNotIn("bids_sources", generate_manifest_yaml(_VALID_DD, "scans.tsv"))
+
+
+class ParticipantsManifestKeyTests(unittest.TestCase):
+    def test_participants_tsv_key_only_when_given(self) -> None:
+        import yaml
+
+        with_key = yaml.safe_load(
+            generate_manifest_yaml(_VALID_DD, "scans.tsv", participants_filename="participants.tsv")
+        )
+        self.assertEqual(with_key["participants_tsv"], "participants.tsv")
+        self.assertNotIn("participants_tsv", yaml.safe_load(generate_manifest_yaml(_VALID_DD)))

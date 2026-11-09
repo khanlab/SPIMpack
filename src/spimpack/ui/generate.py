@@ -138,6 +138,7 @@ def generate_manifest_yaml(
     dataset_description: dict[str, Any],
     tsv_filename: str = "scans.tsv",
     bids_sources: list[str] | None = None,
+    participants_filename: str | None = None,
 ) -> str:
     """Return YAML text for a ``manifest.yml`` file.
 
@@ -147,6 +148,8 @@ def generate_manifest_yaml(
         Mapping that becomes the ``dataset_description`` block.
     tsv_filename:
         Relative filename reference written as ``scans_tsv``.
+    participants_filename:
+        Relative filename written as ``participants_tsv`` (omitted when None).
     bids_sources:
         Existing BIDS dataset roots to merge, written as ``bids_sources``.
     """
@@ -158,6 +161,8 @@ def generate_manifest_yaml(
         },
         "scans_tsv": tsv_filename,
     }
+    if participants_filename:
+        manifest["participants_tsv"] = participants_filename
     if bids_sources:
         manifest["bids_sources"] = [{"path": str(p)} for p in bids_sources]
     return yaml.dump(manifest, default_flow_style=False, allow_unicode=True, sort_keys=False)
