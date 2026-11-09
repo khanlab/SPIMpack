@@ -12,6 +12,7 @@ from typing import Any
 
 import yaml
 
+from spimpack.bids_source import SubjectReport
 from spimpack.models import (
     BIDS_ENTITY_DEFS,
     REQUIRED_CORE_TSV_COLUMNS,
@@ -52,6 +53,7 @@ DEFAULT_PARTICIPANTS_COLUMNS: tuple[str, ...] = (
 def validate_form(
     dataset_description: dict[str, Any],
     rows: list[dict[str, Any]],
+    source_sessions: dict[str, set[str]] | None = None,
 ) -> list[str]:
     """Return a list of human-readable validation error messages.
 
@@ -62,6 +64,10 @@ def validate_form(
     rows:
         Non-empty rows from the scans table (fully-blank rows should be
         filtered out by the caller before passing here).
+    source_sessions:
+        Subject label -> session labels of the loaded existing BIDS dataset(s).
+        When given, every row needs a session. Subjects missing from the BIDS
+        source(s) are allowed (reported via :func:`subject_report`).
 
     Returns
     -------
@@ -106,12 +112,32 @@ def validate_form(
                     f" (got {val!r})."
                 )
 
+        if source_sessions is not None:
+            if not str(row.get("session", "")).strip():
+                errors.append(
+                    f"Row {i}: 'session' is required when merging with an existing BIDS dataset."
+                )
+
     return errors
+
+
+def subject_report(
+    rows: list[dict[str, Any]],
+    source_sessions: dict[str, set[str]],
+) -> SubjectReport:
+    """Build the SPIM-vs-BIDS subject matching report for the current scan rows."""
+    spim_sessions: dict[str, set[str]] = {}
+    for row in rows:
+        subject = str(row.get("subject", "")).strip()
+        if subject:
+            spim_sessions.setdefault(subject, set()).add(str(row.get("session", "")).strip())
+    return SubjectReport(spim_sessions=spim_sessions, source_sessions=source_sessions)
 
 
 def generate_manifest_yaml(
     dataset_description: dict[str, Any],
     tsv_filename: str = "scans.tsv",
+    bids_sources: list[str] | None = None,
 ) -> str:
     """Return YAML text for a ``manifest.yml`` file.
 
@@ -121,6 +147,8 @@ def generate_manifest_yaml(
         Mapping that becomes the ``dataset_description`` block.
     tsv_filename:
         Relative filename reference written as ``scans_tsv``.
+    bids_sources:
+        Existing BIDS dataset roots to merge, written as ``bids_sources``.
     """
     manifest: dict[str, Any] = {
         "dataset_description": {
@@ -130,6 +158,8 @@ def generate_manifest_yaml(
         },
         "scans_tsv": tsv_filename,
     }
+    if bids_sources:
+        manifest["bids_sources"] = [{"path": str(p)} for p in bids_sources]
     return yaml.dump(manifest, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 

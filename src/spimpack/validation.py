@@ -79,7 +79,18 @@ def validate_manifest(manifest: DatasetManifest) -> None:
                 raise ValidationError(f"spim_path does not exist: {asset.spim_path}")
 
             _validate_entities(asset.entities)
-            if participant_labels and asset.entities.subject not in participant_labels:
+            if manifest.bids_sources and not asset.entities.session:
+                raise ValidationError(
+                    f"asset sub-{asset.entities.subject} sample-{asset.entities.sample} has no "
+                    "session; a session is required when merging with existing BIDS datasets"
+                )
+            # With BIDS sources, subject matching is checked against the merged
+            # participants (see bids_source.plan_bids_merge).
+            if (
+                participant_labels
+                and not manifest.bids_sources
+                and asset.entities.subject not in participant_labels
+            ):
                 raise ValidationError(
                     f"scan subject sub-{asset.entities.subject} is not listed in participants.tsv"
                 )
