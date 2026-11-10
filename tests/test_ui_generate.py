@@ -307,3 +307,59 @@ class ParticipantsManifestKeyTests(unittest.TestCase):
         )
         self.assertEqual(with_key["participants_tsv"], "participants.tsv")
         self.assertNotIn("participants_tsv", yaml.safe_load(generate_manifest_yaml(_VALID_DD)))
+
+
+class LoadManifestForUiTests(unittest.TestCase):
+    def test_round_trip_fields(self) -> None:
+        import tempfile
+
+        from generate import (
+            extra_dataset_description_yaml,
+            load_manifest_for_ui,
+            parse_extra_dataset_description,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "my_scans.tsv").write_text(
+                "subject\tsample\tsession\tspim_path\torientation_string_xyz\tsample_staining\tSpecies\n"
+                "01\tbrain\texvivo\t/x.ims\tLPS\tAbeta;YoPro\tmouse\n",
+                encoding="utf-8",
+            )
+            (root / "participants.tsv").write_text("participant_id\tage\nsub-01\t5\n", encoding="utf-8")
+            (root / "manifest.yml").write_text(
+                "dataset_description:\n  Name: Demo\n  License: CC0\n  Funding:\n  - grant\n"
+                "scans_tsv: my_scans.tsv\nbids_sources:\n- path: mri\n- /abs/mri2\n",
+                encoding="utf-8",
+            )
+            loaded = load_manifest_for_ui(root / "manifest.yml")
+
+        self.assertEqual(loaded["tsv_filename"], "my_scans.tsv")
+        self.assertEqual(loaded["scan_rows"][0]["Species"], "mouse")
+        self.assertEqual(loaded["participants_rows"], [{"participant_id": "sub-01", "age": "5"}])
+        self.assertEqual(loaded["bids_sources"], [str((root / "mri").resolve()), "/abs/mri2"])
+        self.assertEqual(loaded["warnings"], [])
+
+        extra = extra_dataset_description_yaml(loaded["dataset_description"])
+        self.assertNotIn("Name", extra)
+        self.assertEqual(parse_extra_dataset_description(extra), {"Funding": ["grant"]})
+
+    def test_missing_scans_is_a_warning(self) -> None:
+        import tempfile
+
+        from generate import load_manifest_for_ui
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "manifest.yml"
+            path.write_text("dataset_description:\n  Name: Demo\n", encoding="utf-8")
+            loaded = load_manifest_for_ui(path)
+        self.assertEqual(loaded["scan_rows"], [])
+        self.assertTrue(any("scans_tsv not found" in w for w in loaded["warnings"]))
+
+    def test_extra_fields_cannot_shadow_form_fields(self) -> None:
+        from generate import parse_extra_dataset_description
+
+        with self.assertRaises(ValueError):
+            parse_extra_dataset_description("Name: other\n")
+        with self.assertRaises(ValueError):
+            parse_extra_dataset_description("- not a mapping\n")

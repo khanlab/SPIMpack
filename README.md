@@ -191,6 +191,12 @@ A browser window opens automatically.  You can also navigate to
 
 ### Workflow
 
+To edit an existing manifest, open **Load existing manifest.yml to edit** at the
+top, enter (or browse to) the manifest path and click **Load**. Its scans.tsv,
+participants.tsv and BIDS sources are loaded into the form. Extra scans.tsv columns
+(e.g. `Species`) and extra `dataset_description` fields (e.g. `Funding`) are kept
+and editable, and the save path is set to the loaded manifest.
+
 1. **Dataset Description** – fill in the form fields (name, BIDS version,
    dataset type, license, authors).
 2. **Scans Table** – use the interactive table to add one row per imaging
