@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -27,6 +28,10 @@ if str(_ui_dir) not in sys.path:
 
 from generate import (  # noqa: E402
     DEFAULT_PARTICIPANTS_COLUMNS,
+    DEFAULT_TSV_COLUMNS,
+    extra_dataset_description_yaml,
+    load_manifest_for_ui,
+    parse_extra_dataset_description,
     generate_manifest_yaml,
     generate_participants_tsv,
     generate_tsv,
@@ -65,7 +70,12 @@ _MAX_STAINING_CHANNELS: int = 3
 # ---------------------------------------------------------------------------
 
 
-def _browse_for_file(initialdir: str | None = None) -> str | None:
+def _browse_for_file(
+    initialdir: str | None = None,
+    *,
+    title: str = "Select SPIM file",
+    filetypes: list[tuple[str, str]] | None = None,
+) -> str | None:
     """Open a native OS file-picker dialog and return the chosen path.
 
     Uses Tkinter (standard library) so no extra dependencies are required.
@@ -86,8 +96,9 @@ def _browse_for_file(initialdir: str | None = None) -> str | None:
         root.withdraw()
         root.wm_attributes("-topmost", 1)
         kwargs: dict[str, Any] = {
-            "title": "Select SPIM file",
-            "filetypes": [
+            "title": title,
+            "filetypes": filetypes
+            or [
                 ("SPIM files", "*.ims *.zarr *.ome.zarr *.ozx"),
                 ("All files", "*.*"),
             ],
@@ -165,6 +176,14 @@ def _render_scan_entry(
                 st.session_state[key] = copy_settings[field]
         # Copy stain selections channel by channel.
         _src_stains = copy_settings.get("_staining_channels_raw", [])
+        st.session_state.setdefault(
+            f"nchan_{scan_id}", max(_MAX_STAINING_CHANNELS, len(_src_stains))
+        )
+        # Copy extra (sidecar metadata) columns and their values.
+        _src_extra = copy_settings.get("_extra_cols", [])
+        st.session_state.setdefault(f"extra_cols_{scan_id}", list(_src_extra))
+        for _col in _src_extra:
+            st.session_state.setdefault(f"extra_{scan_id}_{_col}", copy_settings.get(_col, ""))
         for _ch_idx, _stain_val in enumerate(_src_stains):
             _stain_key = f"stain_{scan_id}_{_ch_idx}"
             if _stain_key not in st.session_state:
@@ -287,8 +306,12 @@ def _render_scan_entry(
                 st.caption("⚠️ Session is required when merging with a BIDS dataset")
 
         # ---- Sample staining -------------------------------------------------
-        st.markdown("**Sample staining** (select up to 3 channels)")
-        stain_cols = st.columns(_MAX_STAINING_CHANNELS)
+        n_channels = max(
+            _MAX_STAINING_CHANNELS,
+            st.session_state.get(f"nchan_{scan_id}", _MAX_STAINING_CHANNELS),
+        )
+        st.markdown(f"**Sample staining** (select up to {n_channels} channels)")
+        stain_cols = st.columns(n_channels)
         staining_channels: list[str] = []
         staining_selectbox_values: list[str] = []  # raw selectbox values for copy
         for ch_idx, s_col in enumerate(stain_cols):
@@ -311,6 +334,18 @@ def _render_scan_entry(
                 elif selected_stain and selected_stain != "— none —":
                     staining_channels.append(selected_stain)
 
+        # ---- Extra columns (sidecar metadata), e.g. from a loaded scans.tsv ----
+        extra_cols: list[str] = st.session_state.get(f"extra_cols_{scan_id}", [])
+        extra_values: dict[str, str] = {}
+        if extra_cols:
+            st.markdown("**Additional columns** (written to the JSON sidecar)")
+            x_cols = st.columns(min(len(extra_cols), 4))
+            for x_idx, x_name in enumerate(extra_cols):
+                with x_cols[x_idx % len(x_cols)]:
+                    extra_values[x_name] = st.text_input(
+                        x_name, key=f"extra_{scan_id}_{x_name}"
+                    )
+
     return {
         "_scan_id": scan_id,
         "_remove": remove_clicked,
@@ -321,7 +356,9 @@ def _render_scan_entry(
         "spim_path": spim_path,
         "orientation_string_xyz": orientation,
         "sample_staining": ";".join(staining_channels),
+        **extra_values,
         "_staining_channels_raw": staining_selectbox_values,
+        "_extra_cols": list(extra_cols),
     }
 
 
@@ -338,6 +375,105 @@ st.caption(
     "Build your `manifest.yml` and `scans.tsv` files interactively, "
     "then download them for use with `spimpack package`."
 )
+
+# ---------------------------------------------------------------------------
+# Load an existing manifest for editing
+# ---------------------------------------------------------------------------
+
+
+def _apply_loaded_manifest(loaded: dict[str, Any], manifest_path: Path) -> None:
+    """Populate widget state from a manifest loaded with load_manifest_for_ui."""
+    ss = st.session_state
+    dd = loaded["dataset_description"]
+    ss["dd_name"] = str(dd.get("Name", ""))
+    ss["dd_bids_version"] = str(dd.get("BIDSVersion", "1.9.0"))
+    ss["dd_license"] = str(dd.get("License", ""))
+    ss["dd_type"] = dd.get("DatasetType") if dd.get("DatasetType") in ("raw", "derivative") else "raw"
+    _authors = dd.get("Authors") or []
+    ss["dd_authors"] = "\n".join(map(str, _authors)) if isinstance(_authors, list) else str(_authors)
+    ss["dd_extra"] = extra_dataset_description_yaml(dd)
+    ss["tsv_filename"] = loaded["tsv_filename"]
+    ss["bids_sources_text"] = "\n".join(loaded["bids_sources"])
+    ss["manifest_save_path"] = str(manifest_path)
+
+    scan_ids: list[str] = []
+    for row in loaded["scan_rows"]:
+        sid = str(uuid.uuid4())
+        scan_ids.append(sid)
+        for field, key in (
+            ("spim_path", "spim"),
+            ("orientation_string_xyz", "orient"),
+            ("subject", "subject"),
+            ("sample", "sample"),
+            ("session", "session"),
+            ("acquisition", "acquisition"),
+        ):
+            ss[f"{key}_{sid}"] = row.get(field, "")
+        stains = [s.strip() for s in re.split(r"[;,]", row.get("sample_staining", "")) if s.strip()]
+        ss[f"nchan_{sid}"] = max(_MAX_STAINING_CHANNELS, len(stains))
+        for ch_idx, stain in enumerate(stains):
+            if stain in _STAIN_OPTIONS[1:-1]:
+                ss[f"stain_{sid}_{ch_idx}"] = stain
+            else:
+                ss[f"stain_{sid}_{ch_idx}"] = "— custom —"
+                ss[f"stain_custom_{sid}_{ch_idx}"] = stain
+        extra_cols = [k for k in row if k not in DEFAULT_TSV_COLUMNS]
+        ss[f"extra_cols_{sid}"] = extra_cols
+        for col in extra_cols:
+            ss[f"extra_{sid}_{col}"] = row[col]
+    ss["scan_ids"] = scan_ids or [str(uuid.uuid4())]
+
+    ss["participants_rows"] = loaded["participants_rows"]
+    ss.pop("participants_editor", None)
+
+
+with st.expander("📂 Load existing manifest.yml to edit", expanded=False):
+    st.caption(
+        "Loads the manifest together with its scans.tsv, participants.tsv and BIDS "
+        "sources, replacing everything currently entered below."
+    )
+    if "_load_manifest_browse_trigger" in st.session_state:
+        st.session_state["load_manifest_path"] = st.session_state.pop("_load_manifest_browse_trigger")
+    _lm_col, _lm_browse_col, _lm_btn_col = st.columns([5, 1, 1])
+    with _lm_col:
+        _load_path: str = st.text_input(
+            "Manifest path",
+            key="load_manifest_path",
+            placeholder="/data/project/manifest.yml",
+            label_visibility="collapsed",
+        )
+    with _lm_browse_col:
+        if st.button("📂 Browse", key="browse_load_manifest"):
+            _picked_manifest = _browse_for_file(
+                title="Select manifest.yml",
+                filetypes=[("Manifest", "*.yml *.yaml"), ("All files", "*.*")],
+            )
+            if _picked_manifest:
+                st.session_state["_load_manifest_browse_trigger"] = _picked_manifest
+                st.rerun()
+            else:
+                st.toast("File dialog unavailable — please type the path manually.", icon="ℹ️")
+    with _lm_btn_col:
+        _load_clicked = st.button("⬆️ Load", key="load_manifest", disabled=not _load_path.strip())
+    if _load_clicked:
+        _lm_path = Path(_load_path.strip()).expanduser()
+        try:
+            _loaded = load_manifest_for_ui(_lm_path)
+        except (OSError, ValueError) as _exc:
+            st.error(f"❌ Could not load {_lm_path}: {_exc}")
+        else:
+            _apply_loaded_manifest(_loaded, _lm_path)
+            st.session_state["_load_manifest_messages"] = (
+                f"Loaded {_lm_path} ({len(_loaded['scan_rows'])} scans, "
+                f"{len(_loaded['participants_rows'])} participants)",
+                _loaded["warnings"],
+            )
+            st.rerun()
+    if "_load_manifest_messages" in st.session_state:
+        _msg, _warns = st.session_state.pop("_load_manifest_messages")
+        st.success(f"✅ {_msg}")
+        for _w in _warns:
+            st.warning(f"⚠️ {_w}")
 
 # ---------------------------------------------------------------------------
 # Section 0 – Existing BIDS dataset(s) to merge (optional)
@@ -436,6 +572,7 @@ with col2:
         "Dataset Type *",
         options=["raw", "derivative"],
         help="Indicates whether this is raw or derived data.",
+        key="dd_type",
     )
     license_val = st.text_input(
         "License *",
@@ -460,6 +597,18 @@ dataset_description: dict[str, Any] = {
 }
 if authors:
     dataset_description["Authors"] = authors
+
+extra_dd_text: str = st.text_area(
+    "Additional dataset_description fields (YAML, optional)",
+    key="dd_extra",
+    placeholder="Funding:\n  - Grant 123\nHowToAcknowledge: Please cite ...",
+    help="Any other dataset_description.json fields, e.g. Funding, ReferencesAndLinks, DatasetDOI.",
+)
+extra_dd_errors: list[str] = []
+try:
+    dataset_description.update(parse_extra_dataset_description(extra_dd_text))
+except ValueError as _exc:
+    extra_dd_errors.append(f"Additional dataset_description fields: {_exc}")
 
 # ---------------------------------------------------------------------------
 # Section 2 – Scan Entries
@@ -529,9 +678,10 @@ for r in scan_results:
 # ---------------------------------------------------------------------------
 # TSV filename
 # ---------------------------------------------------------------------------
+st.session_state.setdefault("tsv_filename", "scans.tsv")
 tsv_filename = st.text_input(
     "TSV filename",
-    value="scans.tsv",
+    key="tsv_filename",
     help="Relative filename stored in manifest.yml as `scans_tsv`.",
 )
 
@@ -673,7 +823,7 @@ participants_tsv_content = generate_participants_tsv(_participants_rows_clean)
 st.header("4. Validate & Download")
 
 errors = validate_form(dataset_description, non_empty_rows, source_sessions=source_sessions)
-errors = [f"BIDS dataset {e}" for e in bids_source_errors] + errors
+errors = [f"BIDS dataset {e}" for e in bids_source_errors] + extra_dd_errors + errors
 
 if errors:
     st.error("**Please fix the following issues before downloading:**")
@@ -748,6 +898,7 @@ run_col1, run_col2 = st.columns(2)
 with run_col1:
     manifest_save_path = st.text_input(
         "Manifest save path *",
+        key="manifest_save_path",
         placeholder="/data/project/manifest.yml",
         help="Absolute path where manifest.yml will be written before running spimpack.",
     )

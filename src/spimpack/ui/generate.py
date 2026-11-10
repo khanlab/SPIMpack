@@ -302,3 +302,106 @@ def parse_participants_file(
         header = list(reader.fieldnames or [])
         rows = [dict(r) for r in reader]
     return header, rows
+
+
+#: dataset_description fields that have their own widgets in the UI.
+UI_DATASET_DESCRIPTION_FIELDS: tuple[str, ...] = (
+    "Name",
+    "BIDSVersion",
+    "DatasetType",
+    "License",
+    "Authors",
+)
+
+
+def load_manifest_for_ui(manifest_path: Path) -> dict[str, Any]:
+    """Read a manifest and its tables from disk for editing in the UI.
+
+    Unlike :func:`spimpack.io.load_manifest` this is lenient: nothing is
+    validated, values are kept as strings, and missing tables only produce
+    warnings, so a broken manifest can still be loaded and fixed.
+
+    Returns a dict with ``dataset_description``, ``tsv_filename``,
+    ``scan_rows``, ``participants_rows``, ``bids_sources`` and ``warnings``.
+    """
+    manifest_path = Path(manifest_path).expanduser()
+    raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"{manifest_path} does not contain a YAML mapping")
+    base = manifest_path.parent
+    warnings: list[str] = []
+
+    dataset_description = raw.get("dataset_description") or {}
+    if not isinstance(dataset_description, dict):
+        raise ValueError("dataset_description must be a mapping")
+
+    if raw.get("datasets"):
+        warnings.append(
+            "Inline `datasets:` assets are not supported by the UI and will be dropped "
+            "on save; move them to scans.tsv."
+        )
+
+    tsv_filename = str(raw.get("scans_tsv") or "scans.tsv")
+    scan_rows = _read_tsv_rows(base / tsv_filename, "scans_tsv", warnings)
+
+    participants_name = raw.get("participants_tsv")
+    participants_path = base / str(participants_name or "participants.tsv")
+    if participants_name or participants_path.is_file():
+        participants_rows = _read_tsv_rows(participants_path, "participants_tsv", warnings)
+    else:
+        participants_rows = []
+
+    bids_sources: list[str] = []
+    for entry in raw.get("bids_sources") or []:
+        source = entry.get("path") if isinstance(entry, dict) else entry
+        if source:
+            source_path = Path(str(source)).expanduser()
+            if not source_path.is_absolute():
+                source_path = (base / source_path).resolve()
+            bids_sources.append(str(source_path))
+
+    return {
+        "dataset_description": dataset_description,
+        "tsv_filename": tsv_filename,
+        "scan_rows": scan_rows,
+        "participants_rows": participants_rows,
+        "bids_sources": bids_sources,
+        "warnings": warnings,
+    }
+
+
+def _read_tsv_rows(path: Path, label: str, warnings: list[str]) -> list[dict[str, str]]:
+    if not path.is_file():
+        warnings.append(f"{label} not found: {path}")
+        return []
+    with path.open("r", newline="", encoding="utf-8") as f:
+        return [
+            {k: (v or "").strip() for k, v in row.items() if k}
+            for row in csv.DictReader(f, delimiter="\t")
+        ]
+
+
+def extra_dataset_description_yaml(dataset_description: dict[str, Any]) -> str:
+    """YAML for the dataset_description fields that have no dedicated UI widget."""
+    extra = {
+        k: v for k, v in dataset_description.items() if k not in UI_DATASET_DESCRIPTION_FIELDS
+    }
+    if not extra:
+        return ""
+    return yaml.dump(extra, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+
+def parse_extra_dataset_description(text: str) -> dict[str, Any]:
+    """Parse the free-form extra dataset_description YAML; raises ValueError if invalid."""
+    if not text.strip():
+        return {}
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid YAML: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("must be a YAML mapping of field: value")
+    clash = [k for k in data if k in UI_DATASET_DESCRIPTION_FIELDS]
+    if clash:
+        raise ValueError(f"set {', '.join(clash)} with the fields above instead")
+    return data
