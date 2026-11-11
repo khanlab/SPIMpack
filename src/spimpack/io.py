@@ -72,10 +72,15 @@ def load_manifest(path: Path) -> DatasetManifest:
         datasets[dataset_id] = DatasetSpec(dataset_id=dataset_id, assets=assets)
 
     participants = _load_participants(path, raw)
+    bids_sources = _load_bids_sources(path, raw)
 
     scans_tsv_path = _resolve_scans_tsv(path)
     if scans_tsv_path:
-        scan_assets = _load_scan_assets(scans_tsv_path, participants)
+        # With BIDS sources, subjects may come from the source participants.tsv;
+        # matching is checked later against the merged set.
+        scan_assets = _load_scan_assets(
+            scans_tsv_path, [] if bids_sources else participants
+        )
         if scan_assets:
             datasets["scans"] = DatasetSpec(dataset_id="scans", assets=scan_assets)
 
@@ -83,7 +88,28 @@ def load_manifest(path: Path) -> DatasetManifest:
         dataset_description=dataset_description,
         datasets=list(datasets.values()),
         participants=participants,
+        bids_sources=bids_sources,
     )
+
+
+def _load_bids_sources(manifest_path: Path, raw_manifest: dict[str, Any]) -> list[Path]:
+    """Parse ``bids_sources`` entries (strings or ``{path: ...}`` mappings).
+
+    Relative paths are resolved against the manifest directory.
+    """
+    entries = raw_manifest.get("bids_sources") or []
+    if not isinstance(entries, list):
+        raise ValueError("bids_sources must be a list")
+    sources: list[Path] = []
+    for entry in entries:
+        raw_path = entry.get("path") if isinstance(entry, dict) else entry
+        if not raw_path:
+            raise ValueError("bids_sources entry is missing a path")
+        source = Path(str(raw_path)).expanduser()
+        if not source.is_absolute():
+            source = manifest_path.parent.resolve() / source
+        sources.append(source)
+    return sources
 
 
 def _resolve_scans_tsv(manifest_path: Path) -> Path | None:

@@ -122,6 +122,53 @@ spimpack package \
 ```
 
 Symlinks are absolute by default. Use `--relative-symlinks` to create relative symlinks.
+Use `--dry-run` to validate and print the summary without writing anything.
+
+## Merging with an existing BIDS dataset (e.g. MRI)
+
+SPIMpack can combine the SPIM data with one or more existing BIDS datasets, producing
+a single dataset with e.g. `anat/`, `dwi/` and `micr/` side by side. Source datasets
+are indexed with pybids; every file is symlinked at the same relative path
+(`derivatives/`, `sourcedata/`, `code/` and dotfiles are skipped). Source files are
+linked by path, not resolved.
+
+List the sources in the manifest (relative paths resolve against the manifest
+directory), and/or pass `--bids-source PATH` (repeatable):
+
+```yaml
+bids_sources:
+  - path: /data/bids/mri_study
+```
+
+```bash
+spimpack inspect-bids /data/bids/mri_study          # subjects, sessions, datatypes
+spimpack package --manifest manifest.yml --output-dir /data/combined --dry-run
+spimpack package --manifest manifest.yml --output-dir /data/combined
+```
+
+Rules:
+
+- **Sessions are required** in both the SPIM scans and the source dataset(s).
+- Subjects only in SPIM (e.g. control brains) or only in the source dataset are
+  allowed. A subject-matching summary lists matched, SPIM-only and BIDS-only
+  subjects with counts; SPIM-only labels that closely resemble a BIDS subject
+  (e.g. `002` vs `02`) are flagged as possible naming errors. Fix labels in
+  `scans.tsv` or in the source dataset.
+- `dataset_description.json`: manifest values win; fields the manifest omits are
+  filled from the source(s); every dropped value is reported as a warning.
+  `GeneratedBy` entries are combined.
+- `participants.tsv`: rows/columns are combined on `participant_id`; conflicting
+  values are an error. Missing values are written as `n/a`.
+- `participants.json` is merged (conflicting keys are an error), `.bidsignore` lines
+  are combined.
+- Any path provided by two sources (unless the files are identical) or by a source
+  and SPIMpack is an error.
+- The output directory must be new or empty. To pick up changes in the source
+  dataset, re-run into a fresh directory.
+
+In the UI, enter the dataset root(s) under **0. Existing BIDS dataset**; scan entries
+then show whether each subject matches (or is SPIM-only), and the subject-matching
+summary is shown before download.
 
 ## Interactive UI
 

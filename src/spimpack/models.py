@@ -96,3 +96,5 @@ class DatasetManifest:
     dataset_description: dict[str, Any]
     datasets: list[DatasetSpec]
     participants: list[ParticipantSpec] = field(default_factory=list)
+    #: Existing BIDS datasets (e.g. MRI) whose files are linked into the output.
+    bids_sources: list[Path] = field(default_factory=list)

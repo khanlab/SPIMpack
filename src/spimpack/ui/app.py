@@ -31,7 +31,14 @@ from generate import (  # noqa: E402
     generate_participants_tsv,
     generate_tsv,
     parse_participants_file,
+    subject_report,
     validate_form,
+)
+from spimpack.bids_source import (  # noqa: E402
+    BidsSource,
+    SubjectReport,
+    format_source_summary,
+    load_bids_source,
 )
 from spimpack.cli import run_package  # noqa: E402
 from spimpack.validation import ValidationError  # noqa: E402
@@ -96,11 +103,37 @@ def _browse_for_file(initialdir: str | None = None) -> str | None:
         # RuntimeError – Tcl/Tk initialisation failure
         return None
 
+
+def _browse_for_directory(initialdir: str | None = None) -> str | None:
+    """Open a native OS folder-picker dialog; None when unavailable (see _browse_for_file)."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.wm_attributes("-topmost", 1)
+        kwargs: dict[str, Any] = {"title": "Select BIDS dataset root", "mustexist": True}
+        if initialdir:
+            kwargs["initialdir"] = initialdir
+        path = filedialog.askdirectory(**kwargs)
+        root.destroy()
+        return path or None
+    except (ImportError, OSError, RuntimeError):
+        return None
+
+
+@st.cache_data(show_spinner="Indexing BIDS dataset with pybids…")
+def _load_bids_source_cached(path: str) -> BidsSource:
+    return load_bids_source(Path(path))
+
+
 def _render_scan_entry(
     scan_id: str,
     scan_index: int,
     *,
     copy_settings: dict[str, Any] | None = None,
+    source_sessions: dict[str, set[str]] | None = None,
 ) -> dict[str, Any]:
     """Render all widgets for one scan entry and return its current field values.
 
@@ -235,6 +268,24 @@ def _render_scan_entry(
                 help="BIDS acquisition label (optional), e.g. 4x",
             )
 
+        # ---- Match against existing BIDS dataset(s) ---------------------------
+        if source_sessions is not None:
+            _subj = subject.strip()
+            if _subj in source_sessions:
+                _ses = ", ".join(sorted(source_sessions[_subj])) or "none"
+                st.caption(f"✅ sub-{_subj} found in BIDS dataset (sessions: {_ses})")
+            elif _subj:
+                _hint = SubjectReport({}, source_sessions).suggestion(_subj)
+                if _hint:
+                    st.caption(
+                        f"⚠️ sub-{_subj} is not in the BIDS dataset but is similar to "
+                        f"{_hint} — check for a naming error"
+                    )
+                else:
+                    st.caption(f"ℹ️ sub-{_subj} is not in the BIDS dataset (SPIM-only subject)")
+            if not session.strip():
+                st.caption("⚠️ Session is required when merging with a BIDS dataset")
+
         # ---- Sample staining -------------------------------------------------
         st.markdown("**Sample staining** (select up to 3 channels)")
         stain_cols = st.columns(_MAX_STAINING_CHANNELS)
@@ -289,19 +340,96 @@ st.caption(
 )
 
 # ---------------------------------------------------------------------------
+# Section 0 – Existing BIDS dataset(s) to merge (optional)
+# ---------------------------------------------------------------------------
+st.header("0. Existing BIDS dataset (optional)")
+st.caption(
+    "Merge an existing BIDS dataset (e.g. MRI) into the output. Its files are "
+    "symlinked; `dataset_description.json`, `participants.tsv/.json` and `.bidsignore` "
+    "are merged. Both datasets must use sessions and the output directory must be new "
+    "or empty. Subjects only in SPIM or only in the BIDS dataset are allowed and listed "
+    "in the subject-matching summary."
+)
+
+if "_bids_browse_trigger" in st.session_state:
+    _existing = st.session_state.get("bids_sources_text", "").strip()
+    _picked = st.session_state.pop("_bids_browse_trigger")
+    st.session_state["bids_sources_text"] = f"{_existing}\n{_picked}".strip()
+
+_src_col, _src_btn_col = st.columns([5, 1])
+with _src_col:
+    bids_sources_text: str = st.text_area(
+        "BIDS dataset root(s), one per line",
+        key="bids_sources_text",
+        placeholder="/data/bids/mri_study",
+        height=68,
+    )
+with _src_btn_col:
+    st.write(" ")
+    if st.button("📂 Browse", key="browse_bids_source"):
+        _picked_dir = _browse_for_directory()
+        if _picked_dir:
+            st.session_state["_bids_browse_trigger"] = _picked_dir
+            st.rerun()
+        else:
+            st.toast("Folder dialog unavailable — please type the path manually.", icon="ℹ️")
+    if st.button("🔄 Re-index", key="reindex_bids", help="Re-read the BIDS dataset(s) from disk"):
+        _load_bids_source_cached.clear()
+        st.rerun()
+
+bids_source_paths: list[str] = [
+    ln.strip() for ln in bids_sources_text.splitlines() if ln.strip()
+]
+loaded_sources: list[BidsSource] = []
+bids_source_errors: list[str] = []
+for _p in bids_source_paths:
+    try:
+        _src = _load_bids_source_cached(_p)
+    except Exception as _exc:  # noqa: BLE001
+        bids_source_errors.append(f"{_p}: {_exc}")
+        st.error(f"❌ {_p}: {_exc}")
+    else:
+        loaded_sources.append(_src)
+        st.code(format_source_summary(_src))
+
+#: subject -> sessions across all loaded sources; None when not merging.
+source_sessions: dict[str, set[str]] | None = None
+if bids_source_paths:
+    source_sessions = {}
+    for _src in loaded_sources:
+        for _subj, _ses in _src.sessions.items():
+            source_sessions.setdefault(_subj, set()).update(_ses)
+
+if loaded_sources and st.button(
+    "📋 Fill empty dataset description fields from BIDS dataset",
+    key="prefill_dd",
+    help="Values you enter take precedence; unset fields are filled from the BIDS dataset at packaging time anyway.",
+):
+    _src_dd = loaded_sources[0].dataset_description
+    for _key, _field in (("dd_name", "Name"), ("dd_license", "License"), ("dd_bids_version", "BIDSVersion")):
+        if _src_dd.get(_field) and not str(st.session_state.get(_key, "")).strip():
+            st.session_state[_key] = str(_src_dd[_field])
+    if _src_dd.get("Authors") and not st.session_state.get("dd_authors", "").strip():
+        st.session_state["dd_authors"] = "\n".join(map(str, _src_dd["Authors"]))
+
+# ---------------------------------------------------------------------------
 # Section 1 – Dataset Description
 # ---------------------------------------------------------------------------
 st.header("1. Dataset Description")
+
+if "dd_bids_version" not in st.session_state:
+    st.session_state["dd_bids_version"] = "1.9.0"
 
 col1, col2 = st.columns(2)
 with col1:
     name = st.text_input(
         "Dataset Name *",
         placeholder="My SPIM Dataset",
+        key="dd_name",
     )
     bids_version = st.text_input(
         "BIDS Version *",
-        value="1.9.0",
+        key="dd_bids_version",
     )
 with col2:
     dataset_type = st.selectbox(
@@ -313,12 +441,14 @@ with col2:
         "License *",
         placeholder="CC-BY-4.0",
         help="E.g. CC0, CC-BY-4.0, MIT",
+        key="dd_license",
     )
 
 authors_text = st.text_area(
     "Authors (one per line)",
     placeholder="Author Name 1\nAuthor Name 2",
     help="Enter one author name per line.  Leave blank to omit from manifest.",
+    key="dd_authors",
 )
 authors = [a.strip() for a in authors_text.splitlines() if a.strip()]
 
@@ -352,7 +482,9 @@ for idx, sid in enumerate(st.session_state["scan_ids"]):
     # Check whether this scan has pending copy settings to apply on first render.
     _copy_key = f"_copy_settings_{sid}"
     _pending_copy = st.session_state.pop(_copy_key, None)
-    entry = _render_scan_entry(sid, idx, copy_settings=_pending_copy)
+    entry = _render_scan_entry(
+        sid, idx, copy_settings=_pending_copy, source_sessions=source_sessions
+    )
     remove = entry.pop("_remove")
     entry_scan_id = entry.pop("_scan_id")
     if remove:
@@ -412,6 +544,12 @@ st.caption(
     "The table is pre-populated with unique subject IDs from the scan entries above.  "
     "You can edit the rows directly or import an existing file."
 )
+if bids_source_paths:
+    st.info(
+        "The BIDS dataset's `participants.tsv` is merged automatically — only add "
+        "SPIM-specific columns here. A value that differs from the BIDS dataset for "
+        "the same participant and column is an error."
+    )
 
 # Derive unique participant IDs from the scans entered so far.
 _scans_subjects: list[str] = [
@@ -534,7 +672,8 @@ participants_tsv_content = generate_participants_tsv(_participants_rows_clean)
 # ---------------------------------------------------------------------------
 st.header("4. Validate & Download")
 
-errors = validate_form(dataset_description, non_empty_rows)
+errors = validate_form(dataset_description, non_empty_rows, source_sessions=source_sessions)
+errors = [f"BIDS dataset {e}" for e in bids_source_errors] + errors
 
 if errors:
     st.error("**Please fix the following issues before downloading:**")
@@ -543,7 +682,17 @@ if errors:
 else:
     st.success("✅ No validation errors — files are ready to download.")
 
-manifest_yaml = generate_manifest_yaml(dataset_description, tsv_filename)
+if source_sessions is not None and loaded_sources:
+    with st.expander("Subject matching (SPIM scans vs BIDS dataset)", expanded=True):
+        st.code(subject_report(non_empty_rows, source_sessions).format())
+
+participants_filename = "participants.tsv" if _participants_rows_clean else None
+manifest_yaml = generate_manifest_yaml(
+    dataset_description,
+    tsv_filename,
+    bids_sources=bids_source_paths,
+    participants_filename=participants_filename,
+)
 tsv_content = generate_tsv(non_empty_rows)
 
 manifest_col, scans_col, participants_col = st.columns(3)
@@ -609,7 +758,7 @@ with run_col2:
         help="Directory where spimpack will write the packaged BIDS dataset.",
     )
 
-opt_col1, opt_col2 = st.columns(2)
+opt_col1, opt_col2, opt_col3 = st.columns(3)
 with opt_col1:
     run_backend = st.selectbox(
         "Backend",
@@ -622,6 +771,21 @@ with opt_col2:
         value=False,
         help="Create relative symlinks instead of absolute symlinks (symlink backend only).",
     )
+with opt_col3:
+    run_dry_run = st.checkbox(
+        "Dry run",
+        value=False,
+        help="Validate and print the summary / subject report without writing the dataset.",
+    )
+
+if bids_source_paths and output_dir_path:
+    with contextlib.suppress(OSError):
+        _out = Path(output_dir_path)
+        if _out.exists() and any(_out.iterdir()):
+            st.warning(
+                "⚠️ Output directory is not empty. When merging with a BIDS dataset, "
+                "write to a new or empty directory."
+            )
 
 # Show a preview of the command that will be executed.
 if manifest_save_path and output_dir_path:
@@ -633,6 +797,8 @@ if manifest_save_path and output_dir_path:
     ]
     if run_relative_symlinks:
         cmd_parts.append("--relative-symlinks")
+    if run_dry_run:
+        cmd_parts.append("--dry-run")
     st.code(" ".join(cmd_parts), language="bash")
 
 run_disabled = bool(errors) or not manifest_save_path or not output_dir_path
@@ -653,7 +819,17 @@ if st.button(
         manifest_path_obj.parent.mkdir(parents=True, exist_ok=True)
         manifest_path_obj.write_text(manifest_yaml, encoding="utf-8")
         tsv_path_obj.write_text(tsv_content, encoding="utf-8")
-        st.info(f"Saved `{manifest_path_obj}` and `{tsv_path_obj}`")
+        _saved = [manifest_path_obj, tsv_path_obj]
+        _participants_path = manifest_path_obj.parent / "participants.tsv"
+        if participants_filename:
+            _participants_path.write_text(participants_tsv_content, encoding="utf-8")
+            _saved.append(_participants_path)
+        elif _participants_path.exists():
+            st.warning(
+                f"⚠️ `{_participants_path}` already exists and will be used by "
+                "spimpack, although the participants table above is empty."
+            )
+        st.info("Saved " + ", ".join(f"`{p}`" for p in _saved))
     except OSError as exc:
         st.error(f"❌ Failed to save files: {exc}")
     else:
@@ -666,6 +842,7 @@ if st.button(
                     output_dir=Path(output_dir_path),
                     backend=run_backend,
                     relative_symlinks=run_relative_symlinks,
+                    dry_run=run_dry_run,
                 )
         except (ValidationError, ValueError, FileNotFoundError) as exc:
             st.error(f"❌ spimpack package failed: {exc}")

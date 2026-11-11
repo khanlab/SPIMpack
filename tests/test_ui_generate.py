@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 # Add ui/ to path so generate can be imported without installing as a package.
-sys.path.insert(0, str(Path(__file__).parent.parent / "ui"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "spimpack" / "ui"))
 
 from generate import (
     DEFAULT_PARTICIPANTS_COLUMNS,
@@ -265,3 +265,45 @@ class TestParseParticipantsFile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BidsSourceFormTests(unittest.TestCase):
+    _ROW = {
+        "subject": "01",
+        "session": "exvivo",
+        "sample": "s01",
+        "spim_path": "/data/x.ims",
+        "orientation_string_xyz": "LPS",
+        "sample_staining": "c1",
+    }
+
+    def test_no_source_sessions_keeps_previous_behaviour(self) -> None:
+        row = {**self._ROW, "session": "", "subject": "99"}
+        self.assertEqual(validate_form(_VALID_DD, [row]), [])
+
+    def test_session_and_subject_checked_against_sources(self) -> None:
+        sources = {"01": {"invivo"}, "02": {"invivo"}}
+        self.assertEqual(validate_form(_VALID_DD, [self._ROW], source_sessions=sources), [])
+        spim_only = {**self._ROW, "subject": "ctrl1"}
+        self.assertEqual(validate_form(_VALID_DD, [spim_only], source_sessions=sources), [])
+        no_session = {**self._ROW, "session": ""}
+        errors = validate_form(_VALID_DD, [no_session], source_sessions=sources)
+        self.assertTrue(any("'session' is required" in e for e in errors))
+
+    def test_manifest_yaml_includes_bids_sources(self) -> None:
+        import yaml
+
+        text = generate_manifest_yaml(_VALID_DD, "scans.tsv", bids_sources=["/data/mri"])
+        self.assertEqual(yaml.safe_load(text)["bids_sources"], [{"path": "/data/mri"}])
+        self.assertNotIn("bids_sources", generate_manifest_yaml(_VALID_DD, "scans.tsv"))
+
+
+class ParticipantsManifestKeyTests(unittest.TestCase):
+    def test_participants_tsv_key_only_when_given(self) -> None:
+        import yaml
+
+        with_key = yaml.safe_load(
+            generate_manifest_yaml(_VALID_DD, "scans.tsv", participants_filename="participants.tsv")
+        )
+        self.assertEqual(with_key["participants_tsv"], "participants.tsv")
+        self.assertNotIn("participants_tsv", yaml.safe_load(generate_manifest_yaml(_VALID_DD)))
