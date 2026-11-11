@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from spimpack import __version__
 from spimpack.layout import asset_relpaths
 from spimpack.models import DatasetManifest, ParticipantSpec
+from spimpack.samples import SAMPLES_COLUMNS, SAMPLES_JSON, spim_sample_rows
 
 if TYPE_CHECKING:
     from spimpack.bids_source import MergePlan
@@ -50,12 +51,18 @@ class SymlinkWriter:
                 (output_dir / ".bidsignore").write_text(
                     "\n".join(plan.bidsignore) + "\n", encoding="utf-8"
                 )
+            _write_tsv(output_dir / "samples.tsv", plan.samples_columns, plan.samples)
+            _write_json(output_dir / "samples.json", plan.samples_json)
             for rel, source in plan.links.items():
                 # Source dataset files are linked by path, not resolved, so links
                 # point into the source dataset rather than wherever it points.
                 self._link(output_dir / rel, Path(os.path.abspath(source)))
         else:
             _write_participants_tsv(manifest.participants, output_dir)
+            samples = spim_sample_rows(manifest)
+            if samples:
+                _write_tsv(output_dir / "samples.tsv", SAMPLES_COLUMNS, samples)
+                _write_json(output_dir / "samples.json", SAMPLES_JSON)
 
         for dataset in manifest.datasets:
             for asset in dataset.assets:
@@ -84,6 +91,14 @@ def ensure_empty_output_dir(output_dir: Path) -> None:
             f"output directory {output_dir} is not empty; when merging with existing "
             "BIDS datasets, write to a new or empty directory"
         )
+
+
+def _write_tsv(path: Path, columns: list[str], rows: list[dict[str, str]]) -> None:
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=columns, delimiter="\t", lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({c: row.get(c) or "n/a" for c in columns})
 
 
 def _write_json(path: Path, data: dict) -> None:
