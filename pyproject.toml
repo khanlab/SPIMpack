@@ -27,7 +27,7 @@ version_scheme = "no-guess-dev"
 local_scheme = "no-local-version"
 
 [tool.pixi.workspace]
-channels = ["conda-forge"]
+channels = ["conda-forge", "https://prefix.dev/akhanf/khanlab"]
 platforms = ["linux-64"]
 preview = ["pixi-build"]
 
@@ -58,3 +58,4 @@ pybids = ">=0.22.0,<0.23"
 streamlit = ">=1.58.0,<2"
 pandas = ">=3.0.3,<4"
 starlette = ">=0.47,<1.4"
+zarrnii = ">=0.22.0,<0.23"

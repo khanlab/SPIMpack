@@ -41,7 +41,12 @@ Sidecars preserve metadata that cannot be embedded in Imaris assets, including r
 
 - `OrientationStringXYZ`
 - `SampleStaining`
-- additional metadata fields from manifest input (and optional `RequiredMicroscopyFields`)
+- `PixelSize` / `PixelSizeUnits` for `.ims` sources: the full-resolution voxel size,
+  read lazily from the Imaris header with zarrnii and written as
+  `[PixelSizeX, PixelSizeY, PixelSizeZ]` in `mm`. If the file can't be read, a
+  warning is printed and the fields are left out.
+- additional metadata fields from manifest input (and optional `RequiredMicroscopyFields`);
+  these take precedence over values read from the image
 
 ## Input format
 
@@ -113,6 +118,27 @@ Before writing, SPIMpack validates:
 - BIDS entity values (`subject`, `session`, `sample`, `acquisition`) must be **alphanumeric only** (letters and numbers, no hyphens or special characters)
 - Required columns to map to BIDS sidecar metadata: `orientation_string_xyz`, `sample_staining`
 - Source SPIM datasets (can be .ims, .ome.zarr, .ozx; any format ZarrNii supports) must exist
+
+### Running the bids-validator on `.ims` datasets
+
+`.ims` is not a BIDS microscopy extension, so the bids-validator reports
+`EXTENSION_MISMATCH` for each `*_SPIM.ims` file. It still validates the sidecar
+for those files (e.g. missing `PixelSize` is still reported as
+`SIDECAR_KEY_REQUIRED`), so you can ignore just that one issue with a config file
+instead of adding `*.ims` to `.bidsignore` (which would also stop the sidecars
+from being checked):
+
+```json
+{
+  "ignore": [
+    {"code": "EXTENSION_MISMATCH", "location": "**/*.ims"}
+  ]
+}
+```
+
+```
+bids-validator /path/to/dataset -c bids-validator-config.json
+```
 
 ## CLI
 
