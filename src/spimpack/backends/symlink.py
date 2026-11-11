@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from spimpack import __version__
+from spimpack.imaris import imaris_sidecar_fields, is_imaris
 from spimpack.layout import asset_relpaths
 from spimpack.models import DatasetManifest, ParticipantSpec
 from spimpack.samples import SAMPLES_COLUMNS, SAMPLES_JSON, spim_sample_rows
@@ -68,7 +69,9 @@ class SymlinkWriter:
             for asset in dataset.assets:
                 image_rel, sidecar_rel = asset_relpaths(asset)
                 self._link(output_dir / image_rel, asset.spim_path.resolve())
+                # Values from the manifest take precedence over ones read from the image.
                 sidecar = {
+                    **(imaris_sidecar_fields(asset.spim_path) if is_imaris(asset.spim_path) else {}),
                     "OrientationStringXYZ": asset.orientation_string_xyz,
                     "SampleStaining": asset.sample_staining,
                     **asset.metadata,
