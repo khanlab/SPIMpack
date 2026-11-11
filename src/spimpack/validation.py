@@ -5,6 +5,7 @@ import re
 from .models import (
     REQUIRED_DATASET_DESCRIPTION_FIELDS,
     SIDECAR_ASSET_FIELDS,
+    SPIM_SIDECAR_FIELDS,
     BidsEntities,
     DatasetManifest,
     participant_label_from_id,
@@ -94,6 +95,14 @@ def validate_manifest(manifest: DatasetManifest) -> None:
                 raise ValidationError(
                     f"scan subject sub-{asset.entities.subject} is not listed in participants.tsv"
                 )
+
+            for field_def in SPIM_SIDECAR_FIELDS:
+                value = asset.metadata.get(field_def.name)
+                if field_def.choices and value and value not in field_def.choices:
+                    raise ValidationError(
+                        f"asset sub-{asset.entities.subject} {field_def.name} must be one of "
+                        f"{list(field_def.choices)}, got {value!r}"
+                    )
 
             missing_sidecar = []
             for key in SIDECAR_ASSET_FIELDS:

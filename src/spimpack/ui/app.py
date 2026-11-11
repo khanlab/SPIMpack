@@ -29,6 +29,12 @@ if str(_ui_dir) not in sys.path:
 from generate import (  # noqa: E402
     DEFAULT_PARTICIPANTS_COLUMNS,
     DEFAULT_TSV_COLUMNS,
+    MICROSCOPE_CUSTOM,
+    MICROSCOPE_NOT_SET,
+    MICROSCOPE_OPTIONS,
+    SIDECAR_TSV_COLUMNS,
+    microscope_fields,
+    microscope_option,
     extra_dataset_description_yaml,
     load_manifest_for_ui,
     parse_extra_dataset_description,
@@ -46,6 +52,7 @@ from spimpack.bids_source import (  # noqa: E402
     load_bids_source,
 )
 from spimpack.cli import run_package  # noqa: E402
+from spimpack.models import SPIM_SIDECAR_FIELDS  # noqa: E402
 from spimpack.validation import ValidationError  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -134,6 +141,106 @@ def _browse_for_directory(initialdir: str | None = None) -> str | None:
         return None
 
 
+#: Sidecar fields set through the microscope selectbox rather than their own widget.
+_MICROSCOPE_FIELDS = ("Manufacturer", "ManufacturersModelName")
+
+
+def _sidecar_state_keys(scan_id: str) -> dict[str, str]:
+    """Session-state keys of the sidecar-metadata widgets of one scan."""
+    keys = {
+        f.name: f"sc_{scan_id}_{f.name}"
+        for f in SPIM_SIDECAR_FIELDS
+        if f.name not in _MICROSCOPE_FIELDS
+    }
+    keys["_microscope"] = f"microscope_{scan_id}"
+    keys["_mfr_custom"] = f"mfr_custom_{scan_id}"
+    keys["_model_custom"] = f"model_custom_{scan_id}"
+    return keys
+
+
+def _sidecar_state_from_row(row: dict[str, Any]) -> dict[str, str]:
+    """Widget values (by _sidecar_state_keys name) for the sidecar fields present in *row*."""
+    values = {
+        f.name: str(row[f.name])
+        for f in SPIM_SIDECAR_FIELDS
+        if f.name not in _MICROSCOPE_FIELDS and f.name in row
+    }
+    if any(name in row for name in _MICROSCOPE_FIELDS):
+        manufacturer = str(row.get("Manufacturer", ""))
+        model = str(row.get("ManufacturersModelName", ""))
+        values["_microscope"] = microscope_option(manufacturer, model)
+        if values["_microscope"] == MICROSCOPE_CUSTOM:
+            values["_mfr_custom"] = manufacturer
+            values["_model_custom"] = model
+    return values
+
+
+def _render_sidecar_fields(scan_id: str) -> dict[str, str]:
+    """Render the recommended BIDS sidecar fields of one scan; return them by field name."""
+    keys = _sidecar_state_keys(scan_id)
+    ss = st.session_state
+    # Defaults apply only to fields with no value yet (new, copied or loaded scans keep theirs).
+    for field_def in SPIM_SIDECAR_FIELDS:
+        if field_def.name in keys:
+            ss.setdefault(keys[field_def.name], field_def.default)
+    ss.setdefault(keys["_microscope"], MICROSCOPE_NOT_SET)
+
+    values: dict[str, str] = {}
+    _filled = sum(
+        1 for f in SPIM_SIDECAR_FIELDS
+        if f.name in keys and str(ss.get(keys[f.name], "")).strip()
+    ) + (2 if ss.get(keys["_microscope"]) != MICROSCOPE_NOT_SET else 0)
+    with st.expander(
+        f"🔬 Microscope & sample metadata ({_filled}/{len(SPIM_SIDECAR_FIELDS)} recommended "
+        "BIDS sidecar fields set)",
+        expanded=False,
+    ):
+        for group in dict.fromkeys(f.group for f in SPIM_SIDECAR_FIELDS):
+            st.markdown(f"**{group}**")
+            group_fields = [f for f in SPIM_SIDECAR_FIELDS if f.group == group]
+            if group == "Microscope":
+                m_col, mf_col, mm_col = st.columns(3)
+                with m_col:
+                    choice = st.selectbox(
+                        "Microscope",
+                        options=MICROSCOPE_OPTIONS,
+                        key=keys["_microscope"],
+                        help="Sets Manufacturer and ManufacturersModelName.",
+                    )
+                if choice == MICROSCOPE_CUSTOM:
+                    with mf_col:
+                        mfr = st.text_input("Manufacturer", key=keys["_mfr_custom"])
+                    with mm_col:
+                        model = st.text_input("ManufacturersModelName", key=keys["_model_custom"])
+                    values.update(microscope_fields(choice, mfr, model))
+                else:
+                    values.update(microscope_fields(choice))
+                group_fields = [f for f in group_fields if f.name not in _MICROSCOPE_FIELDS]
+            cols = st.columns(3)
+            for f_idx, field_def in enumerate(group_fields):
+                with cols[f_idx % 3]:
+                    if field_def.choices:
+                        values[field_def.name] = st.selectbox(
+                            field_def.name,
+                            options=["", *field_def.choices],
+                            format_func=lambda v: v or MICROSCOPE_NOT_SET,
+                            key=keys[field_def.name],
+                            help=field_def.help,
+                        )
+                    else:
+                        values[field_def.name] = st.text_input(
+                            field_def.name, key=keys[field_def.name], help=field_def.help
+                        )
+        if st.button(
+            "Apply these to all scans",
+            key=f"sc_apply_all_{scan_id}",
+            help="Copy the microscope & sample metadata above to every scan entry.",
+        ):
+            ss["_apply_sidecar_all"] = {name: ss.get(key) for name, key in keys.items()}
+            st.rerun()
+    return values
+
+
 @st.cache_data(show_spinner="Indexing BIDS dataset with pybids…")
 def _load_bids_source_cached(path: str) -> BidsSource:
     return load_bids_source(Path(path))
@@ -184,6 +291,8 @@ def _render_scan_entry(
         st.session_state.setdefault(f"extra_cols_{scan_id}", list(_src_extra))
         for _col in _src_extra:
             st.session_state.setdefault(f"extra_{scan_id}_{_col}", copy_settings.get(_col, ""))
+        for _name, _val in _sidecar_state_from_row(copy_settings).items():
+            st.session_state.setdefault(_sidecar_state_keys(scan_id)[_name], _val)
         for _ch_idx, _stain_val in enumerate(_src_stains):
             _stain_key = f"stain_{scan_id}_{_ch_idx}"
             if _stain_key not in st.session_state:
@@ -334,6 +443,9 @@ def _render_scan_entry(
                 elif selected_stain and selected_stain != "— none —":
                     staining_channels.append(selected_stain)
 
+        # ---- Recommended BIDS sidecar fields ----------------------------------
+        sidecar_values = _render_sidecar_fields(scan_id)
+
         # ---- Extra columns (sidecar metadata), e.g. from a loaded scans.tsv ----
         extra_cols: list[str] = st.session_state.get(f"extra_cols_{scan_id}", [])
         extra_values: dict[str, str] = {}
@@ -356,6 +468,7 @@ def _render_scan_entry(
         "spim_path": spim_path,
         "orientation_string_xyz": orientation,
         "sample_staining": ";".join(staining_channels),
+        **sidecar_values,
         **extra_values,
         "_staining_channels_raw": staining_selectbox_values,
         "_extra_cols": list(extra_cols),
@@ -417,7 +530,11 @@ def _apply_loaded_manifest(loaded: dict[str, Any], manifest_path: Path) -> None:
             else:
                 ss[f"stain_{sid}_{ch_idx}"] = "— custom —"
                 ss[f"stain_custom_{sid}_{ch_idx}"] = stain
-        extra_cols = [k for k in row if k not in DEFAULT_TSV_COLUMNS]
+        for name, val in _sidecar_state_from_row(row).items():
+            ss[_sidecar_state_keys(sid)[name]] = val
+        extra_cols = [
+            k for k in row if k not in DEFAULT_TSV_COLUMNS and k not in SIDECAR_TSV_COLUMNS
+        ]
         ss[f"extra_cols_{sid}"] = extra_cols
         for col in extra_cols:
             ss[f"extra_{sid}_{col}"] = row[col]
@@ -623,6 +740,14 @@ st.caption(
 # Initialise the list of scan IDs in session state on first load.
 if "scan_ids" not in st.session_state:
     st.session_state["scan_ids"] = [str(uuid.uuid4())]
+
+# "Apply these to all scans": set before any widget is created in this run.
+_apply_all = st.session_state.pop("_apply_sidecar_all", None)
+if _apply_all is not None:
+    for _sid in st.session_state["scan_ids"]:
+        for _name, _key in _sidecar_state_keys(_sid).items():
+            if _apply_all.get(_name) is not None:
+                st.session_state[_key] = _apply_all[_name]
 
 # Render all scan entries and collect row data.
 scan_results: list[dict[str, Any]] = []

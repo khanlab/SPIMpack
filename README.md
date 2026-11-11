@@ -88,6 +88,28 @@ Optional:
 | `session`                | BIDS session label (alphanumeric only)   |
 | `acquisition`            | BIDS acquisition label, e.g. `4x`        |
 
+Recommended BIDS sidecar fields (optional columns; each column name is the sidecar key):
+
+| Column                        | Notes                                            |
+|-------------------------------|--------------------------------------------------|
+| `Manufacturer`                | e.g. `Miltenyi Biotec`, `LifeCanvas`             |
+| `ManufacturersModelName`      | e.g. `UltraMicroscope Blaze II`, `SmartSPIM`     |
+| `DeviceSerialNumber`          | a unique pseudonym is fine                       |
+| `StationName`                 |                                                  |
+| `SoftwareVersions`            | acquisition software version                     |
+| `InstitutionName`             | e.g. `Western University`                        |
+| `InstitutionalDepartmentName` |                                                  |
+| `InstitutionAddress`          |                                                  |
+| `BodyPart`                    | e.g. `BRAIN`                                     |
+| `BodyPartDetails`             | e.g. `whole brain, optically cleared`            |
+| `SampleEnvironment`           | must be `in vivo`, `ex vivo` or `in vitro`       |
+| `SamplePrimaryAntibody`       | `;`-separated per channel -> JSON array          |
+| `SampleSecondaryAntibody`     | `;`-separated per channel -> JSON array          |
+
+Without these, the bids-validator reports `SIDECAR_KEY_RECOMMENDED` warnings.
+The CLI writes only the values in the TSV; the UI pre-fills the defaults shown
+in the examples above and offers the two microscopes as presets.
+
 Any additional columns are written into the sidecar JSON.
 
 ### Example TSV
@@ -228,7 +250,11 @@ and editable, and the save path is set to the loaded manifest.
 2. **Scans Table** – use the interactive table to add one row per imaging
    acquisition.  Required columns are marked with `*`; optional BIDS entity
    columns (`session`, `acquisition`) can be left blank.  Extra PascalCase columns are
-   written to the sidecar JSON.
+   written to the sidecar JSON.  Each scan has a **Microscope & sample metadata**
+   panel for the recommended sidecar fields: pick the microscope
+   (UltraMicroscope Blaze II / SmartSPIM, or custom), and check the pre-filled
+   institution and sample defaults. **Apply these to all scans** copies the panel
+   to every scan.
 3. **Validate & Download** – any validation errors are shown inline.  Once the
    form is valid, download `manifest.yml` and `scans.tsv` with the provided
    buttons.

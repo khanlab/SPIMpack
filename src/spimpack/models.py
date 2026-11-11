@@ -13,6 +13,65 @@ SIDECAR_ASSET_FIELDS = ("orientation_string_xyz", "sample_staining")
 #: TSV columns that are required and map to ImageAsset / dataset fields (not entities, not sidecar).
 REQUIRED_CORE_TSV_COLUMNS = ("spim_path", "orientation_string_xyz", "sample_staining")
 
+@dataclass(frozen=True)
+class SidecarFieldDef:
+    """A recommended BIDS microscopy sidecar field that can be set per scan."""
+
+    name: str  # sidecar key, also used as the scans.tsv column name
+    group: str
+    help: str
+    default: str = ""  # pre-filled in the UI only; never injected by the CLI
+    choices: tuple[str, ...] = ()  # allowed values; empty means free text
+    multi: bool = False  # ';'-separated values become a JSON array (e.g. per channel)
+
+
+#: Recommended sidecar fields for BIDS microscopy (``micr``) data, in UI order.
+#: Each is an optional scans.tsv column of the same name.
+SPIM_SIDECAR_FIELDS: tuple[SidecarFieldDef, ...] = (
+    SidecarFieldDef("Manufacturer", "Microscope", "Manufacturer of the microscope."),
+    SidecarFieldDef("ManufacturersModelName", "Microscope", "Manufacturer's model name of the microscope."),
+    SidecarFieldDef("DeviceSerialNumber", "Microscope", "Serial number of the microscope (a unique pseudonym is fine)."),
+    SidecarFieldDef("StationName", "Microscope", "Institution-defined name of the microscope."),
+    SidecarFieldDef("SoftwareVersions", "Microscope", "Acquisition software version, e.g. ImSpector Pro 7.5."),
+    SidecarFieldDef("InstitutionName", "Institution", "Institution in charge of the microscope.", default="Western University"),
+    SidecarFieldDef("InstitutionalDepartmentName", "Institution", "Department in charge of the microscope."),
+    SidecarFieldDef("InstitutionAddress", "Institution", "Address of the institution."),
+    SidecarFieldDef("BodyPart", "Sample", "Body part imaged (DICOM Body Part Examined).", default="BRAIN"),
+    SidecarFieldDef("BodyPartDetails", "Sample", "Additional details about the body part.", default="whole brain, optically cleared"),
+    SidecarFieldDef(
+        "SampleEnvironment", "Sample", "Environment in which the sample was imaged.",
+        default="ex vivo", choices=("in vivo", "ex vivo", "in vitro"),
+    ),
+    SidecarFieldDef(
+        "SamplePrimaryAntibody", "Sample",
+        "Primary antibody (RRID, or name, supplier and catalog number). Separate per-channel values with ';'.",
+        multi=True,
+    ),
+    SidecarFieldDef(
+        "SampleSecondaryAntibody", "Sample",
+        "Secondary antibody (RRID, or name, supplier and catalog number). Separate per-channel values with ';'.",
+        multi=True,
+    ),
+)
+
+SPIM_SIDECAR_FIELDS_BY_NAME: dict[str, SidecarFieldDef] = {f.name: f for f in SPIM_SIDECAR_FIELDS}
+
+#: Microscopes offered as presets: model name -> manufacturer.
+MICROSCOPE_PRESETS: dict[str, str] = {
+    "UltraMicroscope Blaze II": "Miltenyi Biotec",
+    "SmartSPIM": "LifeCanvas",
+}
+
+
+def parse_sidecar_value(name: str, raw: str) -> Any:
+    """Convert a scans.tsv cell to its sidecar value (';'-lists become arrays for multi fields)."""
+    field_def = SPIM_SIDECAR_FIELDS_BY_NAME.get(name)
+    if field_def is None or not field_def.multi:
+        return raw
+    items = [v.strip() for v in raw.split(";") if v.strip()]
+    return items if len(items) > 1 else (items[0] if items else "")
+
+
 #: Path pattern used by pybids build_path for BIDS microscopy assets.
 BIDS_MICR_PATTERN = (
     "sub-{subject}/[ses-{session}/]micr/"
