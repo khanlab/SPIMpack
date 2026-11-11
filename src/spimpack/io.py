@@ -16,6 +16,7 @@ from .models import (
     ParticipantSpec,
     participant_id_with_prefix,
     participant_label_from_id,
+    parse_sidecar_value,
 )
 
 
@@ -223,7 +224,9 @@ def _parse_row_metadata(row: dict[str, str], fieldnames: list[str]) -> dict[str,
 
     Columns that are BIDS entity names or core required columns are skipped.
     Remaining columns whose names start with an uppercase letter (PascalCase) are
-    treated as JSON sidecar metadata and preserved as-is.
+    treated as JSON sidecar metadata. Values are kept as strings, except that
+    ';'-separated values of multi-valued fields (e.g. ``SamplePrimaryAntibody``)
+    become arrays.
     """
     skip = _ALL_ENTITY_COLUMN_NAMES | set(REQUIRED_CORE_TSV_COLUMNS)
     metadata: dict[str, Any] = {}
@@ -232,5 +235,5 @@ def _parse_row_metadata(row: dict[str, str], fieldnames: list[str]) -> dict[str,
         if key in skip or value in (None, ""):
             continue
         if key and key[0].isupper():
-            metadata[key] = value
+            metadata[key] = parse_sidecar_value(key, value.strip())
     return metadata

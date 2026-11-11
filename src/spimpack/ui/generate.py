@@ -15,8 +15,10 @@ import yaml
 from spimpack.bids_source import SubjectReport
 from spimpack.models import (
     BIDS_ENTITY_DEFS,
+    MICROSCOPE_PRESETS,
     REQUIRED_CORE_TSV_COLUMNS,
     REQUIRED_DATASET_DESCRIPTION_FIELDS,
+    SPIM_SIDECAR_FIELDS,
 )
 
 _BIDS_LABEL_RE = re.compile(r"^[A-Za-z0-9]+$")
@@ -39,6 +41,48 @@ DEFAULT_TSV_COLUMNS: tuple[str, ...] = (
     + _OPTIONAL_ENTITY_COLUMNS
     + ("spim_path", "orientation_string_xyz", "sample_staining")
 )
+
+#: Recommended BIDS sidecar columns, written after the default columns.
+SIDECAR_TSV_COLUMNS: tuple[str, ...] = tuple(f.name for f in SPIM_SIDECAR_FIELDS)
+
+MICROSCOPE_NOT_SET = "— not set —"
+MICROSCOPE_CUSTOM = "— custom —"
+
+
+def _microscope_label(model: str, manufacturer: str) -> str:
+    return f"{model} ({manufacturer})"
+
+
+#: Options for the microscope selectbox; presets set Manufacturer and ManufacturersModelName.
+MICROSCOPE_OPTIONS: tuple[str, ...] = (
+    MICROSCOPE_NOT_SET,
+    *(_microscope_label(m, mf) for m, mf in MICROSCOPE_PRESETS.items()),
+    MICROSCOPE_CUSTOM,
+)
+
+
+def microscope_option(manufacturer: str, model: str) -> str:
+    """Selectbox option matching a Manufacturer / ManufacturersModelName pair."""
+    manufacturer, model = manufacturer.strip(), model.strip()
+    if not manufacturer and not model:
+        return MICROSCOPE_NOT_SET
+    if MICROSCOPE_PRESETS.get(model) == manufacturer:
+        return _microscope_label(model, manufacturer)
+    return MICROSCOPE_CUSTOM
+
+
+def microscope_fields(option: str, custom_manufacturer: str = "", custom_model: str = "") -> dict[str, str]:
+    """``Manufacturer`` / ``ManufacturersModelName`` values for a selectbox option."""
+    for model, manufacturer in MICROSCOPE_PRESETS.items():
+        if option == _microscope_label(model, manufacturer):
+            return {"Manufacturer": manufacturer, "ManufacturersModelName": model}
+    if option == MICROSCOPE_CUSTOM:
+        return {
+            "Manufacturer": custom_manufacturer.strip(),
+            "ManufacturersModelName": custom_model.strip(),
+        }
+    return {"Manufacturer": "", "ManufacturersModelName": ""}
+
 
 #: Column order for participants.tsv — participant_id is always first.
 DEFAULT_PARTICIPANTS_COLUMNS: tuple[str, ...] = (
@@ -110,6 +154,14 @@ def validate_form(
                 errors.append(
                     f"Row {i}: '{ed.long_name}' must contain only letters and numbers"
                     f" (got {val!r})."
+                )
+
+        for field_def in SPIM_SIDECAR_FIELDS:
+            val = str(row.get(field_def.name, "")).strip()
+            if field_def.choices and val and val not in field_def.choices:
+                errors.append(
+                    f"Row {i}: '{field_def.name}' must be one of: "
+                    f"{', '.join(field_def.choices)} (got {val!r})."
                 )
 
         if source_sessions is not None:
@@ -188,15 +240,20 @@ def generate_tsv(
         Complete TSV content including header line.
     """
     extra_cols: list[str] = list(extra_columns or [])
-    known = set(DEFAULT_TSV_COLUMNS)
+    known = set(DEFAULT_TSV_COLUMNS) | set(SIDECAR_TSV_COLUMNS)
 
     # Collect extra columns seen in rows but not in the default set
+    seen: set[str] = set()
     for row in rows:
         for key in row:
+            seen.add(key)
             if key not in known and key not in extra_cols:
                 extra_cols.append(key)
 
-    columns = list(DEFAULT_TSV_COLUMNS) + extra_cols
+    # Recommended sidecar columns keep a fixed order, ahead of any other extras.
+    sidecar_cols = [c for c in SIDECAR_TSV_COLUMNS if c in seen or c in extra_cols]
+    extra_cols = [c for c in extra_cols if c not in sidecar_cols]
+    columns = list(DEFAULT_TSV_COLUMNS) + sidecar_cols + extra_cols
 
     output = io.StringIO()
     writer = csv.DictWriter(
