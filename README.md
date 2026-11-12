@@ -17,7 +17,11 @@ pixi global install spimpack -c https://prefix.dev/akhanf/khanlab -c conda-forge
 - Initial backend: local symlink packaging
 - CLI packaging workflow independent of SPIMprep internals and Snakemake
 
-## Current backend
+## Backends
+
+- `symlink` (default): links the dataset into the output directory.
+- `mind`: writes `ingest_manifest.json`, describing the same dataset for upload to MIND. See
+  [MIND ingest manifest](#mind-ingest-manifest).
 
 `symlink` writes:
 
@@ -41,8 +45,8 @@ Sidecars preserve metadata that cannot be embedded in Imaris assets, including r
 
 - `OrientationStringXYZ`
 - `SampleStaining`
-- `PixelSize` / `PixelSizeUnits` for `.ims` sources: the full-resolution voxel size,
-  read lazily from the Imaris header with zarrnii and written as
+- `PixelSize` / `PixelSizeUnits` for `.ims` and OME-Zarr (`.ome.zarr`, `.zarr`, `.ozx`) sources: the
+  full-resolution voxel size, read lazily from the image's metadata with zarrnii and written as
   `[PixelSizeX, PixelSizeY, PixelSizeZ]` in `mm`. If the file can't be read, a
   warning is printed and the fields are left out.
 - additional metadata fields from manifest input (and optional `RequiredMicroscopyFields`);
@@ -222,6 +226,29 @@ Rules:
 In the UI, enter the dataset root(s) under **0. Existing BIDS dataset**; scan entries
 then show whether each subject matches (or is SPIM-only), and the subject-matching
 summary is shown before download.
+
+## MIND ingest manifest
+
+```bash
+spimpack package --manifest manifest.yml --output-dir /path/to/out --backend mind [--convert-to-ome-zarr]
+```
+
+Instead of a dataset on disk, the `mind` backend writes `/path/to/out/ingest_manifest.json`: the input the MIND
+server validates before any data is uploaded. It describes exactly the dataset the `symlink` backend would write,
+merged BIDS sources included:
+
+- JSON, TSV and root text files (`dataset_description.json`, `participants.tsv`, `samples.tsv`, sidecars,
+  `README`, ...) are inside the manifest, with their contents.
+- Every other file (images, NIfTI, `.bval`/`.bvec`) is listed with its BIDS path, its source path and its size.
+  An OME-Zarr store is one entry, with its total size and file count.
+- With `--convert-to-ome-zarr`, images that are not OME-Zarr (`.ims`, `.ozx`) are listed under an `.ome.zarr`
+  path and marked `"convert": true`: the uploader converts them while writing to storage, so the uploaded
+  dataset is plain BIDS microscopy. Without it they are listed as files in their source format.
+
+The manifest format belongs to the `mind-ingest` package (in the MIND server repository). When it is installed
+(`pip install "spimpack[mind]"`), the manifest is validated against BIDS and MIND's `spim` profile before it is
+written, and an invalid dataset is refused with the list of problems; otherwise a warning says it was not
+validated.
 
 ## Interactive UI
 

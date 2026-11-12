@@ -6,7 +6,8 @@ import os
 import sys
 from pathlib import Path
 
-from .backends import get_writer
+from .backends import BACKENDS, get_writer
+from .backends.mind import MANIFEST_NAME
 from .backends.symlink import ensure_empty_output_dir
 from .bids_source import format_source_summary, load_bids_source, plan_bids_merge
 from .io import load_manifest
@@ -26,7 +27,19 @@ def build_parser() -> argparse.ArgumentParser:
     package.add_argument(
         "--backend",
         default="symlink",
-        help="Backend writer name (default: symlink)",
+        choices=BACKENDS,
+        help=(
+            "Backend writer: 'symlink' links the dataset into the output directory; "
+            "'mind' writes ingest_manifest.json there, describing it for upload to MIND (default: symlink)"
+        ),
+    )
+    package.add_argument(
+        "--convert-to-ome-zarr",
+        action="store_true",
+        help=(
+            "With the mind backend: list images that are not OME-Zarr (.ims, .ozx) as .ome.zarr, "
+            "to be converted while they are uploaded"
+        ),
     )
     package.add_argument(
         "--relative-symlinks",
@@ -64,6 +77,7 @@ def run_package(
     relative_symlinks: bool,
     bids_sources: list[Path] | None = None,
     dry_run: bool = False,
+    convert_to_ome_zarr: bool = False,
 ) -> int:
     manifest = load_manifest(manifest_path)
     if bids_sources:
@@ -81,11 +95,15 @@ def run_package(
     if manifest.bids_sources:
         sources = [load_bids_source(p) for p in manifest.bids_sources]
         plan = plan_bids_merge(manifest, sources)
-        if not dry_run:
+        if not dry_run and backend == "symlink":
             ensure_empty_output_dir(output_dir)
 
     if not dry_run:
-        writer = get_writer(backend, relative_symlinks=relative_symlinks)
+        writer = get_writer(
+            backend,
+            relative_symlinks=relative_symlinks,
+            convert_to_ome_zarr=convert_to_ome_zarr,
+        )
         writer.write(manifest, output_dir, plan=plan)
 
     num_datasets = len(manifest.datasets)
@@ -95,6 +113,8 @@ def run_package(
 
     print("Dry run: nothing written." if dry_run else "Packaging complete.")
     print(f"  Output directory : {output_dir}")
+    if backend == "mind" and not dry_run:
+        print(f"  Ingest manifest  : {output_dir / MANIFEST_NAME}")
     print(f"  Datasets         : {num_datasets}")
     print(f"  Subjects         : {num_subjects}")
     print(f"  Scans            : {num_scans}")
@@ -134,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
                 relative_symlinks=args.relative_symlinks,
                 bids_sources=args.bids_source,
                 dry_run=args.dry_run,
+                convert_to_ome_zarr=args.convert_to_ome_zarr,
             )
         if args.command == "inspect-bids":
             return run_inspect(args.paths)

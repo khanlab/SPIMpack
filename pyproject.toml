@@ -11,6 +11,20 @@ description = "SPIM dataset packaging/publishing tool with pluggable backends"
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [{name = "Khan Lab"}]
+# Runtime dependencies for pip/uv installs; keep in step with [tool.pixi.package.run-dependencies] below.
+# tk (the UI's file dialogs) comes with Python itself outside conda.
+dependencies = [
+    "pyyaml>=6.0.3,<7",
+    "pybids>=0.22.0,<0.23",
+    "streamlit>=1.58.0,<2",
+    "pandas>=3.0.3,<4",
+    "starlette>=0.47,<1.4",
+    "zarrnii>=0.22.0,<0.23",
+]
+
+[project.optional-dependencies]
+# validates the ingest manifest the mind backend writes; installed from the MIND server repository
+mind = ["mind-ingest"]
 
 
 [project.scripts]
